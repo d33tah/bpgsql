@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 BPgSQL unittests
 
@@ -84,21 +85,21 @@ class InternalDSNParserTests(unittest.TestCase):
 
     """
     def test_blank(self):
-        self.assertEqual(bpgsql.parseDSN(None), {})
-        self.assertEqual(bpgsql.parseDSN(''), {})
+        self.assertEqual(bpgsql._parseDSN(None), {})
+        self.assertEqual(bpgsql._parseDSN(''), {})
 
     def test_single(self):
-        d = bpgsql.parseDSN('foo=bar')
+        d = bpgsql._parseDSN('foo=bar')
         self.assertEqual(len(d), 1)
         self.assertEqual(d['foo'], 'bar')
 
     def test_spaced(self):
-        d = bpgsql.parseDSN("foo='bar with space'")
+        d = bpgsql._parseDSN("foo='bar with space'")
         self.assertEqual(len(d), 1)
         self.assertEqual(d['foo'], 'bar with space')
 
     def test_multiple(self):
-        d = bpgsql.parseDSN("abc=xyz foo='bar with space' rst= uvw i='1 2 3' j = '21 32 abc'")
+        d = bpgsql._parseDSN("abc=xyz foo='bar with space' rst= uvw i='1 2 3' j = '21 32 abc'")
         self.assertEqual(len(d), 5)
         self.assertEqual(d['abc'], 'xyz')
         self.assertEqual(d['foo'], 'bar with space')

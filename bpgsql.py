@@ -110,13 +110,17 @@ DEBUG = 0
 
 
 
-def parseDSN(s):
+def _parseDSN(s):
     """
-    Parse a string containg connection info in the form:
-       "keyword1=val1 keyword2='val2 with space' keyword3 = val3"
-    into a dictionary {'keyword1': 'val1', 'keyword2': 'val2 with space', 'keyword3': 'val3'}
+    Parse a string containing PostgreSQL libpq-style connection info in the form:
 
-    Returns empty dict if s is empty string or None
+       "keyword1=val1 keyword2='val2 with space' keyword3 = val3"
+
+    into a dictionary::
+
+       {'keyword1': 'val1', 'keyword2': 'val2 with space', 'keyword3': 'val3'}
+
+    Returns empty dict if s is empty string or None.
     """
     if not s:
         return {}
@@ -242,7 +246,11 @@ def _identity(d):
     return d
 
 
-class Connection:
+class _Connection:
+    """
+    connection objects are created by calling this module's connect function.
+
+    """
     def __init__(self):
         self.__backend_pid = None
         self.__backend_key = None
@@ -633,6 +641,58 @@ class Connection:
         #print 'Ready for Query'
 
 
+    def _connect(self, dsn=None, username='', password='', host=None, dbname='', port='', opt=''):
+        #
+        # Come up with a reasonable default host for
+        # win32 and presumably Unix platforms
+        #
+        if host == None:
+            if sys.platform == 'win32':
+                host = '127.0.0.1'
+            else:
+                host = '/tmp/.s.PGSQL.5432'
+
+        args = _parseDSN(dsn)
+
+        if not args.has_key('host'):
+            args['host'] = host
+        if not args.has_key('port'):
+            args['port'] = port or 5432
+        if not args.has_key('dbname'):
+            args['dbname'] = dbname
+        if not args.has_key('user'):
+            args['user'] = username
+        if not args.has_key('password'):
+            args['password'] = password
+        if not args.has_key('options'):
+            args['options'] = opt
+
+        if args['host'].startswith('/'):
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.connect(args['host'])
+        else:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((args['host'], int(args['port'])))
+
+        self.__socket = s
+        self.__passwd = args['password']
+        self.__userid = args['user']
+
+        #
+        # Send startup packet specifying protocol version 2.0
+        #  (works with PostgreSQL 6.3 or higher?)
+        #
+        self.__send(pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
+        while not self.__ready:
+            self.__read_response()
+
+        #
+        # Get type info from the backend to help put together some dictionaries
+        # to help in converting Pgsql types to Python types.
+        #
+        self.__initialize_type_map()
+
+
     #--------------------------------------
     # Helper func for _LargeObject
     #
@@ -688,76 +748,24 @@ class Connection:
     #
 
     def close(self):
+        """
+        Close the connection now (rather than whenever __del__ is
+        called).  The connection will be unusable from this point
+        forward; an Error (or subclass) exception will be raised
+        if any operation is attempted with the connection. The
+        same applies to all cursor objects trying to use the
+        connection.
+
+        """
         self.__del__()
 
 
     def commit(self):
+        """
+        Commit any pending transaction to the database.
+
+        """
         self._execute('COMMIT')
-
-
-    def connect(self, dsn=None, username='', password='', host=None, dbname='', port='', opt=''):
-        """
-        Connect to a PostgreSQL server over TCP/IP
-
-        The dsn, if supplied, is in the format used by the PostgreSQL C library, which is one
-        or more "keyword=value" pairs separated by spaces.  Values that are single-quoted may
-        contain spaces.  Spaces around the '=' chars are ignored.  Recognized keywords are:
-
-          host, port, dbname, user, password, options
-
-        Othewise, the remaining keyword parameters are based somewhat on the Python DB-ABI and
-        will fill in anything not specified in the DSN
-
-        """
-        #
-        # Come up with a reasonable default host for
-        # win32 and presumably Unix platforms
-        #
-        if host == None:
-            if sys.platform == 'win32':
-                host = '127.0.0.1'
-            else:
-                host = '/tmp/.s.PGSQL.5432'
-
-        args = parseDSN(dsn)
-
-        if not args.has_key('host'):
-            args['host'] = host
-        if not args.has_key('port'):
-            args['port'] = port or 5432
-        if not args.has_key('dbname'):
-            args['dbname'] = dbname
-        if not args.has_key('user'):
-            args['user'] = username
-        if not args.has_key('password'):
-            args['password'] = password
-        if not args.has_key('options'):
-            args['options'] = opt
-
-        if args['host'].startswith('/'):
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.connect(args['host'])
-        else:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((args['host'], int(args['port'])))
-
-        self.__socket = s
-        self.__passwd = args['password']
-        self.__userid = args['user']
-
-        #
-        # Send startup packet specifying protocol version 2.0
-        #  (works with PostgreSQL 6.3 or higher?)
-        #
-        self.__send(pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
-        while not self.__ready:
-            self.__read_response()
-
-        #
-        # Get type info from the backend to help put together some dictionaries
-        # to help in converting Pgsql types to Python types.
-        #
-        self.__initialize_type_map()
 
 
     def cursor(self):
@@ -765,7 +773,7 @@ class Connection:
         Get a new cursor object using this connection.
 
         """
-        return Cursor(self)
+        return _Cursor(self)
 
 
     def funcall(self, oid, *args):
@@ -773,6 +781,7 @@ class Connection:
         Low-level call to PostgreSQL function, you must supply
         the oid of the function, and have the args supplied as
         ints or strings.
+
         """
         if DEBUG:
             funcname = self.__lo_funcnames.get(oid, str(oid))
@@ -796,6 +805,7 @@ class Connection:
     def lo_create(self, mode=INV_READ|INV_WRITE):
         """
         Return the oid of a new Large Object, created with the specified mode
+
         """
         if not self.__lo_funcs:
             self.__lo_init()
@@ -807,6 +817,7 @@ class Connection:
         """
         Open the Large Object with the specified oid, returns
         a file-like object
+
         """
         if not self.__lo_funcs:
             self.__lo_init()
@@ -820,6 +831,7 @@ class Connection:
     def lo_unlink(self, oid):
         """
         Delete the specified Large Object
+
         """
         if not self.__lo_funcs:
             self.__lo_init()
@@ -827,6 +839,11 @@ class Connection:
 
 
     def rollback(self):
+        """
+        Cause the the database to roll back to the start of any
+        pending transaction.
+
+        """
         self._execute('ROLLBACK')
 
 
@@ -850,7 +867,8 @@ class Connection:
         specified in the NOTIFY command, and 'pid' is the pid of the
         backend process that processed the command.
 
-        Raises an exception on timeout
+        Raises a PostgreSQL_Timeout exception on timeout
+
         """
         while 1:
             if self.__notify_queue:
@@ -862,7 +880,18 @@ class Connection:
                 raise PostgreSQL_Timeout()
 
 
-class Cursor:
+class _Cursor:
+    """
+    Cursor objects are created by calling a connection's cursor() method,
+    and are used to manage the context of a fetch operation.
+
+    Cursors created from the same connection are not isolated, i.e., any changes
+    done to the database by a cursor are immediately visible by the
+    other cursors.
+
+    Cursors created from different connections are isolated.
+
+    """
     def __init__(self, conn):
         self.arraysize = 1
         self.connection = conn
@@ -883,10 +912,25 @@ class Cursor:
 
 
     def close(self):
+        """
+        Close the cursor now (rather than whenever __del__ is
+        called).  The cursor will be unusable from this point
+        forward; an Error (or subclass) exception will be raised
+        if any operation is attempted with the cursor.
+
+        """
         self.__init__(None)
 
 
     def execute(self, cmd, args=None):
+        """
+        Execute a database operation (query or command).
+        Parameters may be provided as sequence or
+        mapping or singleton argument and will be bound to variables
+        in the operation. Variables are specified in format (...WHERE foo=%s...)
+        or pyformat (...WHERE foo=%(name)s...) paramstyles.
+
+        """
         self.description, self.__rows, self.messages = self.connection._execute(cmd, args)
 
         if self.__rows is None:
@@ -897,8 +941,14 @@ class Cursor:
             self.rownumber = 0
 
 
-    def executemany(self, str,  param_seq):
-        for p in param_seq:
+    def executemany(self, str,  seq_of_parameters):
+        """
+        Execute a database operation (query or command) against
+        all parameter sequences or mappings found in the
+        sequence seq_of_parameters.
+
+        """
+        for p in seq_of_parameters:
             self.execute(str, p)
 
 
@@ -966,6 +1016,18 @@ class Cursor:
 
 
     def scroll(self, n, mode='relative'):
+        """
+        Scroll the cursor in the result set to a new position according
+        to mode.
+
+        If mode is 'relative' (default), value is taken as offset to
+        the current position in the result set, if set to 'absolute',
+        value states an absolute target position.
+
+        An IndexError will be raised in case a scroll operation would
+        leave the result set. In this case, the cursor position unchanged.
+
+        """
         if self.__rows is None:
             raise Error, 'No result set available'
 
@@ -983,16 +1045,44 @@ class Cursor:
 
 
     def setinputsizes(self, sizes):
+        """
+        Intented to be used before a call to executeXXX() to
+        predefine memory areas for the operation's parameters.
+
+        Doesn't actually do anything in this client.
+
+        """
         pass
 
 
     def setoutputsize(size, column=None):
+        """
+        Set a column buffer size for fetches of large columns
+        (e.g. LONGs, BLOBs, etc.).
+
+        Doesn't actually do anything in this client.
+
+        """
         pass
 
 
 def connect(dsn=None, username='', password='', host=None, dbname='', port='', opt='', **extra):
-    pg = Connection()
-    pg.connect(dsn, username, password, host, dbname, port, opt)
+    """
+    Connect to a PostgreSQL database.
+
+    The dsn, if used, is in the format used by the PostgreSQL libpq C library, which is one
+    or more "keyword=value" pairs separated by spaces.  Values that are single-quoted may
+    contain spaces.  Spaces around the '=' chars are ignored.  Recognized keywords are:
+
+          host, port, dbname, user, password, options
+
+    For example:
+
+          cnx = bpgsql.connect("host=127.0.0.1 dbname=mydb user=jake")
+
+    """
+    pg = _Connection()
+    pg._connect(dsn, username, password, host, dbname, port, opt)
     return pg
 
 # ---- EOF ----
