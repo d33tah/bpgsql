@@ -28,16 +28,16 @@ class ConnectedTests(unittest.TestCase):
 class TableTests(ConnectedTests):
     """
     Superclass for test suites that may create tables.  Make
-    sure no tables exist before test starts, and clean out any
-    tables left over afterwards.
+    sure no test tables exist before test starts, and clean out any
+    test tables left over afterwards.
 
     """
     def __drop_existing(self):
         #
-        # Drop any existing non-system tables
+        # Drop any existing test tables
         #
         cur = self.cnx.cursor()
-        cur.execute("SELECT tablename FROM pg_tables WHERE tablename NOT LIKE 'pg_%'")
+        cur.execute("SELECT tablename FROM pg_tables WHERE tablename LIKE 'test_%'")
         tables = [x[0] for x in cur]
         for t in tables:
             cur.execute("DROP TABLE " + t)
@@ -258,15 +258,15 @@ class BasicTableTests(TableTests):
             #
             # Creating a table with a name that already exists should raise an error
             #
-            self.cur.execute("CREATE TABLE foo (id integer, name text)")
-            self.assertRaises(bpgsql.Error, self.cur.execute, "CREATE TABLE foo (id integer, name text)")
+            self.cur.execute("CREATE TABLE test_foo (id integer, name text)")
+            self.assertRaises(bpgsql.Error, self.cur.execute, "CREATE TABLE test_foo (id integer, name text)")
 
         def test_fill_table(self):
-            self.cur.execute("CREATE TABLE foo (id integer, name text)")
+            self.cur.execute("CREATE TABLE test_foo (id integer, name text)")
             for i in range(100):
-                self.cur.execute("INSERT INTO foo (id, name) VALUES (%d, %s)", (i, 'bar-' + str(i)))
+                self.cur.execute("INSERT INTO test_foo (id, name) VALUES (%d, %s)", (i, 'bar-' + str(i)))
 
-            self.cur.execute("SELECT * FROM foo")
+            self.cur.execute("SELECT * FROM test_foo")
             self.assertEqual(self.cur.rowcount, 100)
 
             self.cur.scroll(99)
