@@ -222,35 +222,38 @@ class PGClient:
         #
         # Read an ASCII or Binary Row
         #
-        result = []
-
-        null_bytes = (self.__field_count + 7) >> 3   # how many bytes we need to hold null bits
+        null_byte_count = (self.__field_count + 7) >> 3   # how many bytes we need to hold null bits
 
         # check if we need to use longs (more than 32 fields)
-        if null_bytes > 4:
-            field_bits = 0L
+        if null_byte_count > 4:
+            null_bits = 0L
             field_mask = 128L
         else:
-            field_bits = 0
+            null_bits = 0
             field_mask = 128
 
-        # read byte holding null bits
-        if null_bytes:
-            for ch in self.__read_bytes(null_bytes):
-                field_bits = (field_bits << 8) | ord(ch)
-            field_mask <<= (null_bytes - 1) * 8
+        # read bytes holding null bits and setup the field mask
+        # to point at the first (leftmost) field
+        if null_byte_count:
+            for ch in self.__read_bytes(null_byte_count):
+                null_bits = (null_bits << 8) | ord(ch)
+            field_mask <<= (null_byte_count - 1) * 8
 
+        # read each field into a row
+        row = []
         for i in range(self.__field_count):
-            if field_bits & field_mask:
+            if null_bits & field_mask:
+                # field has data present, read what was sent
                 field_size = unpack('!i', self.__read_bytes(4))[0]
                 if ascii:
                     field_size -= 4
-                result.append(self.__read_bytes(field_size))
+                row.append(self.__read_bytes(field_size))
             else:
-                result.append(None)
+                # field has no data (is null)
+                row.append(None)
             field_mask >>= 1
 
-        self.__result[-1]['rows'].append(result)
+        self.__result[-1]['rows'].append(row)
 
 
     def __send(self, data):
@@ -438,6 +441,7 @@ class PGClient:
             self.__send(pack('!i', len(m)+4) + m)
         else:
             raise PostgreSQL_Error('Unknown startup response code: R%d (unknown password encryption?)' % code)
+
 
     def _pkt_T(self):
         #
