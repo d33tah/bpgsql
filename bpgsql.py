@@ -622,18 +622,22 @@ class PGClient:
         return a
 
 
-    def execute(self, str, args=None):
-        if args is not None:
-            argtype = type(args)
+    def execute(self, str, *args):
+        if args:
+            argtype = type(arg[0])
+            if argtype in [types.TupleType, types.DictType]:
+                args = args[0] # ignore any other args
+            else:
+                argtype = types.TupleType
+
+            # At this point we know args is either a tuple or a dict
+
             if argtype == types.TupleType:
-                # Replace plain format markers with fixed-up tuple parameters
+                # Replace plain-format markers with fixed-up tuple parameters
                 str = str % tuple([__fix_arg(a) for a in args])
-            elif argtype == types.DictType:
+            else:
                 # replace pyformat markers with dictionary parameters
                 str = str % dict([(k, __fix_arg(v)) for k,v in args.items()])
-            elif argtype == types.StringType:
-                # replace plain format marker with singleton string argument
-                str = str % __fix_arg(args)
 
         self.__ready = 0
         self.__result = [{}]
