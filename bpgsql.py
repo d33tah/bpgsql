@@ -93,6 +93,7 @@ PGSQL_TO_PYTHON_TYPES = {   'float4': float,
                             'int2': int,
                             'int4': int,
                             'int8': long,
+                            'oid' : long,
                             'numeric': float        #Should be some kind of decimal?
                             }
 
@@ -298,11 +299,10 @@ class _Connection:
         # Make up a dictionary mapping function names beginning with "lo" to function oids
         # (there may be some non-lobject functions in there, but that should be harmless)
         #
-        rows = self.execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")[0]['rows']
-        for r in rows:
-            oid = int(r[1])
-            self.__lo_funcs[r[0]] = oid
-            self.__lo_funcnames[oid] = r[0]
+        descr, rows, msgs = self._execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")
+        for proname, oid in rows:
+            self.__lo_funcs[proname] = oid
+            self.__lo_funcnames[oid] = proname
 
 
     def __new_result(self):
