@@ -518,7 +518,7 @@ class _Connection:
             lastline = s
         if lastline and (lastline[-1] != '\n'):
             self.__send('\n')
-        self.send('\\.\n')
+        self.__send('\\.\n')
 
 
     def _pkt_H(self):
@@ -813,7 +813,7 @@ class _Connection:
             atype = type(arg)
             if (atype == types.LongType) and (arg >= 0):
                 # Make sure positive longs, such as OIDs, get sent back as unsigned ints
-                self.__send(pack('!iI', 4, arg))   
+                self.__send(pack('!iI', 4, arg))
             elif (atype == types.IntType) or (atype == types.LongType):
                 self.__send(pack('!ii', 4, arg))
             else:
