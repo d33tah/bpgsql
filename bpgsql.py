@@ -689,7 +689,7 @@ class Connection:
         self._execute('COMMIT')
 
 
-    def connect(self, dsn=None, user='', password='', host=None, database='', port=5432, opt=''):
+    def connect(self, dsn=None, username='', password='', host=None, dbname='', port='', opt=''):
         """
         Connect to a PostgreSQL server over TCP/IP
 
@@ -718,11 +718,11 @@ class Connection:
         if not args.has_key('host'):
             args['host'] = host
         if not args.has_key('port'):
-            args['port'] = port
+            args['port'] = port or 5432
         if not args.has_key('dbname'):
-            args['dbname'] = database
-        if not args.has_key('user'):
-            args['user'] = user
+            args['dbname'] = dbname
+        if not args.has_key('username'):
+            args['user'] = username
         if not args.has_key('password'):
             args['password'] = password
         if not args.has_key('options'):
@@ -982,9 +982,9 @@ class Cursor:
         pass
 
 
-def connect(dsn=None, user='', password='', host=None, database='', port=5432, opt=''):
+def connect(dsn=None, username='', password='', host=None, dbname='', port='', opt='', **extra):
     pg = Connection()
-    pg.connect(dsn, user, password, host, database, int(port), opt)
+    pg.connect(dsn, username, password, host, dbname, port, opt)
     return pg
 
 # ---- EOF ----
