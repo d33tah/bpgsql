@@ -234,6 +234,7 @@ class _ResultSet:
         self.description = desc_list
         self.num_fields = len(desc_list)
         self.null_byte_count = (self.num_fields + 7) >> 3
+        self.rows = []
 
 
 def _identity(d):
@@ -571,7 +572,6 @@ class _Connection:
         # Cursor Response
         #
         cursor = self.__read_string()
-        self.__current_result.rows = []
 
 
     def _pkt_R(self):
@@ -948,9 +948,7 @@ class _Cursor:
 
         self.description, self.__rows, self.messages = self.connection._execute(cmd, args)
 
-        if self.description is None:
-            self.__rows = None
-        else:
+        if self.__rows is not None:
             self.rowcount = len(self.__rows)
             self.rownumber = 0
 
