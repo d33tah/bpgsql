@@ -682,6 +682,17 @@ class _Connection:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((args['host'], int(args['port'])))
 
+        if not args['user']:
+            #
+            # If no userid specified in the args, try to use the userid
+            # this process is running under, if we can figure that out.
+            #
+            try:
+                import os, pwd
+                args['user'] = pwd.getpwuid(os.getuid())[0]
+            except:
+                pass
+
         self.__socket = s
         self.__passwd = args['password']
         self.__userid = args['user']
