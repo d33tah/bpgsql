@@ -19,6 +19,63 @@ class ConnectedTests(unittest.TestCase):
         self.cnx = self.cur = None
 
 
+class DBAPIInterfaceTests(unittest.TestCase):
+    """
+    Make sure the module has some basic things required by the DB-API 2.0 spec
+        http://www.python.org/peps/pep-0249.html
+
+    Won't bother checking for the presence of methods like connect(), since later
+    tests will surely find if they're missing.
+
+    """
+    def test_globals(self):
+        self.assertEqual(bpgsql.apilevel, '2.0')
+        self.assertEqual(bpgsql.threadsafety, 1)
+        self.assertEqual(bpgsql.paramstyle, 'pyformat')
+
+    def test_module_exception_hierarchy(self):
+        self.assert_(issubclass(bpgsql.Warning, StandardError))
+        self.assert_(issubclass(bpgsql.Error, StandardError))
+        self.assert_(issubclass(bpgsql.InterfaceError, bpgsql.Error))
+        self.assert_(issubclass(bpgsql.DatabaseError, bpgsql.Error))
+        self.assert_(issubclass(bpgsql.DataError, bpgsql.DatabaseError))
+        self.assert_(issubclass(bpgsql.OperationalError, bpgsql.DatabaseError))
+        self.assert_(issubclass(bpgsql.IntegrityError, bpgsql.DatabaseError))
+        self.assert_(issubclass(bpgsql.InternalError, bpgsql.DatabaseError))
+        self.assert_(issubclass(bpgsql.ProgrammingError, bpgsql.DatabaseError))
+        self.assert_(issubclass(bpgsql.NotSupportedError, bpgsql.DatabaseError))
+
+
+
+class InternalDSNParserTests(unittest.TestCase):
+    """
+    Test the internal parser that handles connection-info strings.
+
+    """
+    def test_blank(self):
+        self.assertEqual(bpgsql.parseDSN(None), {})
+        self.assertEqual(bpgsql.parseDSN(''), {})
+
+    def test_single(self):
+        d = bpgsql.parseDSN('foo=bar')
+        self.assertEqual(len(d), 1)
+        self.assertEqual(d['foo'], 'bar')
+
+    def test_spaced(self):
+        d = bpgsql.parseDSN("foo='bar with space'")
+        self.assertEqual(len(d), 1)
+        self.assertEqual(d['foo'], 'bar with space')
+
+    def test_multiple(self):
+        d = bpgsql.parseDSN("abc=xyz foo='bar with space' rst= uvw i='1 2 3' j = '21 32 abc'")
+        self.assertEqual(len(d), 5)
+        self.assertEqual(d['abc'], 'xyz')
+        self.assertEqual(d['foo'], 'bar with space')
+        self.assertEqual(d['rst'], 'uvw')
+        self.assertEqual(d['i'], '1 2 3')
+        self.assertEqual(d['j'], '21 32 abc')
+
+
 class TypeTests(ConnectedTests):
     def test_integer(self):
         self.cur.execute("SELECT -273")
@@ -75,11 +132,89 @@ class SelectTests(ConnectedTests):
         self.assertEqual(len(rows), 5)
 
 
+class CursorTests(ConnectedTests):
+    def test_connection(self):
+        self.assertEqual(self.cur.connection, self.cnx)
+
+    def test_initial_properties(self):
+        """
+        Check the properties and behavior of a cursor that hasn't executed anything yet
+        """
+        self.assertEqual(self.cur.arraysize, 1)
+        self.assertEqual(self.cur.description, None)
+        self.assertEqual(self.cur.messages, [])
+        self.assertEqual(self.cur.rowcount, -1)
+        self.assertEqual(self.cur.rownumber, None)
+
+        self.assertRaises(bpgsql.Error, self.cur.fetchone)
+        self.assertRaises(bpgsql.Error, self.cur.fetchmany)
+        self.assertRaises(bpgsql.Error, self.cur.fetchmany, 10)
+        self.assertRaises(bpgsql.Error, self.cur.fetchall)
+        self.assertRaises(bpgsql.Error, self.cur.next)
+
+
+    def test_scroll(self):
+        """
+        Dance around the result set using the scroll() method
+
+        """
+        self.cur.execute("SELECT *  from pg_type")
+        self.assertEqual(self.cur.rownumber, 0)
+
+        self.cur.scroll(1)
+        self.assertEqual(self.cur.rownumber, 1)
+
+        self.cur.scroll(3, 'relative')
+        self.assertEqual(self.cur.rownumber, 4)
+
+        self.cur.scroll(-2)
+        self.assertEqual(self.cur.rownumber, 2)
+
+        self.cur.scroll(-1, 'relative')
+        self.assertEqual(self.cur.rownumber, 1)
+
+        self.cur.scroll(0)
+        self.assertEqual(self.cur.rownumber, 1)
+
+        self.cur.scroll(0, 'relative')
+        self.assertEqual(self.cur.rownumber, 1)
+
+        self.cur.scroll(0, 'absolute')
+        self.assertEqual(self.cur.rownumber, 0)
+
+        self.cur.scroll(7, 'absolute')
+        self.assertEqual(self.cur.rownumber, 7)
+
+        self.cur.scroll(5, 'absolute')
+        self.assertEqual(self.cur.rownumber, 5)
+
+        self.assertRaises(IndexError, self.cur.scroll, -1, 'absolute')
+        self.assertEqual(self.cur.rownumber, 5)
+
+        self.cur.scroll(2)
+        self.assertEqual(self.cur.rownumber, 7)
+
+        self.assertRaises(IndexError, self.cur.scroll, self.cur.rowcount)
+        self.assertEqual(self.cur.rownumber, 7)
+
+        self.cur.scroll(self.cur.rowcount-1, 'absolute')
+        self.assertEqual(self.cur.rownumber, self.cur.rowcount-1)
+
+        self.assertNotEqual(self.cur.fetchone(), None)  # Should be the last row
+        self.assertEqual(self.cur.fetchone(), None)     # Should be no more rows
+        self.assertEqual(self.cur.fetchone(), None)     # Should still be no more rows
+
 
 def main():
-    type_tests = unittest.makeSuite(TypeTests, 'test_')
-    select_tests = unittest.makeSuite(SelectTests, 'test_')
-    suite = unittest.TestSuite((select_tests, type_tests))
+    all_tests = []
+    all_tests.append(unittest.makeSuite(DBAPIInterfaceTests, 'test_'))
+    all_tests.append(unittest.makeSuite(InternalDSNParserTests, 'test_'))
+    all_tests.append(unittest.makeSuite(TypeTests, 'test_'))
+    all_tests.append(unittest.makeSuite(SelectTests, 'test_'))
+    all_tests.append(unittest.makeSuite(CursorTests, 'test_'))
+
+    suite = unittest.TestSuite(all_tests)
+
     runner = unittest.TextTestRunner()
     runner.run(suite)
 

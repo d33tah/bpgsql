@@ -22,7 +22,7 @@ USE OR PERFORMANCE OF THIS SOFTWARE.
 
     2001-10-28  Started
     2002-04-06  Changed connect args to be more like the Python DB-API
-    2004-03-27  Reworked to follow DB-API 2.0
+    2004-03-27  Reworked to follow DB-API 2.0 (http://www.python.org/peps/pep-0249.html)
 
 """
 import select, socket, sys, types
@@ -906,6 +906,9 @@ class Cursor:
         An Error is raised if no result set exists
 
         """
+        if self.__rows is None:
+            raise Error, 'No result set available'
+
         return self.fetchmany(self.rowcount - self.rownumber)
 
 
@@ -916,15 +919,10 @@ class Cursor:
         result set exists.
 
         """
-        if self.__rows is None:
-            raise Error, 'No result set available'
-
-        n = self.rownumber
-        if n >= self.rowcount:
+        try:
+            return self.next()
+        except StopIteration:
             return None
-
-        self.rownumber += 1
-        return self.__rows[n]
 
 
     def fetchmany(self, size=None):
@@ -953,10 +951,15 @@ class Cursor:
         exists.
 
         """
-        r = self.fetchone()
-        if r is None:
+        if self.__rows is None:
+            raise Error, 'No result set available'
+
+        n = self.rownumber
+        if n >= self.rowcount:
             raise StopIteration
-        return r
+
+        self.rownumber += 1
+        return self.__rows[n]
 
 
     def scroll(self, n, mode='relative'):
