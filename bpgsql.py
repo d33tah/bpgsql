@@ -88,11 +88,13 @@ class PostgreSQL_Timeout(InterfaceError):
 # PostgreSQL types not listed here stay represented as plain
 # strings in result rows.
 #
-PGSQL_TO_PYTHON_TYPES = {   'int2': int,
+PGSQL_TO_PYTHON_TYPES = {   'float4': float,
+                            'float8': float,
+                            'int2': int,
                             'int4': int,
                             'int8': long,
-                            'float4': float,
-                            'float8': float}
+                            'numeric': float        #Should be some kind of decimal?
+                            }
 
 #
 # Constants relating to Large Object support
@@ -721,7 +723,7 @@ class Connection:
             args['port'] = port or 5432
         if not args.has_key('dbname'):
             args['dbname'] = dbname
-        if not args.has_key('username'):
+        if not args.has_key('user'):
             args['user'] = username
         if not args.has_key('password'):
             args['password'] = password
