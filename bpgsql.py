@@ -32,8 +32,8 @@ from struct import pack, unpack
 # Module Globals specified by DB-API 2.0
 #
 apilevel = '2.0'
-threadsafety = 1      # Threads may share the module, but not connections.
-paramstyle = 'pyformat'
+threadsafety = 1          # Threads may share the module, but not connections.
+paramstyle = 'pyformat'   # we also understand plain-format
 
 #
 # Exception hierarchy from DB-API 2.0 spec
@@ -77,12 +77,18 @@ class NotSupportedError(DatabaseError):
 class PostgreSQL_Timeout(InterfaceError):
     pass
 
+
 #
-# Conversions from PostgreSQL type names found in the pg_type table
-# to Python classes/conversion_functions. Anything not listed here
-# stays a plain string
+# Map of Pgsql type-names to Python conversion-functions.
 #
-TYPE_NAME_CONVERSION = {    'int2': int,
+# The value associated with each key must be a callable Python
+# object that takes a string as a parameter, and returns another
+# Python object.
+#
+# PostgreSQL types not listed here stay represented as plain
+# strings in result rows.
+#
+PGSQL_TO_PYTHON_TYPES = {   'int2': int,
                             'int4': int,
                             'int8': long,
                             'float4': float,
@@ -204,12 +210,17 @@ class _LargeObject:
         return unpack('!i', r)[0]
 
 
-class ResultSet:
+class _ResultSet:
+    #
+    # Helper class only used internally by the Connection class
+    #
     def __init__(self):
         self.description = None
         self.num_fields = 0
         self.null_byte_count = 0
         self.rows = None
+        self.conversion = None
+
 
     def set_description(self, desc_list):
         self.description = desc_list
@@ -242,8 +253,8 @@ class Connection:
         self.__func_result = None
         self.__lo_funcs = {}
         self.__lo_funcnames = {}
-        self.__type_oid_name = {}
-        self.__type_oid_conversion = {}
+        self.__type_oid_name = {}         # map of Pgsql type-oids to Pgsql type-names
+        self.__type_oid_conversion = {}   # map of Pgsql type-oids to Python conversion_functions
 
     def __del__(self):
         if self.__socket:
@@ -265,8 +276,8 @@ class Connection:
         self.__type_oid_name = dict([(int(x[0]), x[1]) for x in cur])
 
         # Fill a dictionary of type oids to conversion functions
-        for k, v in self.__type_oid_name.items():
-            self.__type_oid_conversion[k] = TYPE_NAME_CONVERSION.get(v, _identity)
+        for oid, typename in self.__type_oid_name.items():
+            self.__type_oid_conversion[oid] = PGSQL_TO_PYTHON_TYPES.get(typename, _identity)
 
 
     def __lo_init(self):
@@ -287,7 +298,7 @@ class Connection:
         #
         if self.__result is None:
             self.__result = []
-        self.__current_result = ResultSet()
+        self.__current_result = _ResultSet()
         self.__result.append(self.__current_result)
 
 
@@ -356,10 +367,10 @@ class Connection:
         #
         # Read an ASCII or Binary Row
         #
-        null_byte_count = self.__current_result.null_byte_count
+        result = self.__current_result
 
         # check if we need to use longs (more than 32 fields)
-        if null_byte_count > 4:
+        if result.null_byte_count > 4:
             null_bits = 0L
             field_mask = 128L
         else:
@@ -375,20 +386,20 @@ class Connection:
 
         # read each field into a row
         row = []
-        for field_num in range(self.__current_result.num_fields):
+        for field_num in range(result.num_fields):
             if null_bits & field_mask:
                 # field has data present, read what was sent
                 field_size = unpack('!i', self.__read_bytes(4))[0]
                 if ascii:
                     field_size -= 4
                 data = self.__read_bytes(field_size)
-                row.append(self.__current_result.conversion[field_num](data))
+                row.append(result.conversion[field_num](data))
             else:
                 # field has no data (is null)
                 row.append(None)
             field_mask >>= 1
 
-        self.__current_result.rows.append(row)
+        result.rows.append(row)
 
 
     def __send(self, data):
@@ -592,7 +603,7 @@ class Connection:
         self.__current_result.set_description(descr)
 
         # build a list of field conversion functions we can use against each row
-        self.__current_result.conversion = [self.__type_oid_conversion.get(k[1], _identity) for k in descr]
+        self.__current_result.conversion = [self.__type_oid_conversion.get(d[1], _identity) for d in descr]
 
 
     def _pkt_V(self):
@@ -656,11 +667,13 @@ class Connection:
 
         # Convert old-style results to what the new Cursor class expects
         result = result[0]
+
+        # Convert Pgsql row descriptions to DB-API 2.0 row descriptions, somewhat... ###FIXME###
         descr = result.description
-        print descr
         if descr:
             descr = [(x[0], self.__type_oid_name.get(x[1], '???'), None, None, None, None, None) for x in descr]
 
+        ###FIXME###, should return messages received from backend instead of empty list
         return descr, result.rows, []
 
 
@@ -727,12 +740,18 @@ class Connection:
         self.__passwd = args['password']
         self.__userid = args['user']
 
+        #
         # Send startup packet specifying protocol version 2.0
         #  (works with PostgreSQL 6.3 or higher?)
+        #
         self.__send(pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
         while not self.__ready:
             self.__read_response()
 
+        #
+        # Get type info from the backend to help put together some dictionaries
+        # to help in converting Pgsql types to Python types.
+        #
         self.__initialize_type_map()
 
 
@@ -742,6 +761,7 @@ class Connection:
 
         """
         return Cursor(self)
+
 
     def funcall(self, oid, *args):
         """
