@@ -227,6 +227,7 @@ class _ResultSet:
         self.null_byte_count = 0
         self.num_fields = 0
         self.rows = None
+        self.messages = []
 
 
     def set_description(self, desc_list):
@@ -543,7 +544,8 @@ class _Connection:
         #
         # EmptyQuery Response
         #
-        print 'Empty Query', self.__read_string()
+        if DEBUG:
+            print 'Empty Query', self.__read_string()
 
 
     def _pkt_K(self):
@@ -558,7 +560,10 @@ class _Connection:
         #
         # Notice Response
         #
-        print 'Notice:', self.__read_string()
+        n = self.__read_string()
+        if DEBUG:
+            print 'Notice:', n
+        self.__current_result.messages.append((Warning, n))
 
 
     def _pkt_P(self):
@@ -741,8 +746,7 @@ class _Connection:
         if descr:
             descr = [(x[0], self.__type_oid_name.get(x[1], '???'), None, None, None, None, None) for x in descr]
 
-        ###FIXME###, should return messages received from backend instead of empty list
-        return descr, result.rows, []
+        return descr, result.rows, result.messages
 
 
 
