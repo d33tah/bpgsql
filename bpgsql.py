@@ -138,10 +138,21 @@ def parseDSN(s):
     return result
 
 
+def __fix_arg(a):
+    #
+    # Make an argument SQL-ready: replace None with 'NULL', and escape strings
+    #
+    if a is  None:
+        return 'NULL'
+    if type(a) == types.StringType:
+        return '%s' % a.replace('\\', '\\\\').replace("'", "\\'")
+    return a
+
+
 class _LargeObject:
     """
     Make a PostgreSQL Large Object look somewhat like
-    a Python file.  Should be created from PGClient
+    a Python file.  Should be created from Connection object
     open or create methods.
     """
     def __init__(self, client, fd):
@@ -182,7 +193,7 @@ class _LargeObject:
         return unpack('!i', r)[0]
 
 
-class PGClient:
+class Connection:
     def __init__(self):
         self.__backend_pid = None
         self.__backend_key = None
@@ -547,11 +558,54 @@ class PGClient:
 
 
     #--------------------------------------
+    # Helper function for Cursor objects
+    #
+    def _execute(self, str, *args):
+        if args:
+            argtype = type(args[0])
+            if argtype in [types.TupleType, types.DictType]:
+                args = args[0] # ignore any other args
+            else:
+                argtype = types.TupleType
+
+            # At this point we know args is either a tuple or a dict
+
+            if argtype == types.TupleType:
+                # Replace plain-format markers with fixed-up tuple parameters
+                str = str % tuple([__fix_arg(a) for a in args])
+            else:
+                # replace pyformat markers with dictionary parameters
+                str = str % dict([(k, __fix_arg(v)) for k,v in args.items()])
+
+        self.__ready = 0
+        self.__result = [{}]
+        self.__send('Q'+str+'\0')
+        while not self.__ready:
+            self.__read_response()
+        result, self.__result = self.__result[:-1], None
+
+        # Convert old-style results to what the new Cursor class expects
+        result = result[0]
+        descr = result.get('description', None)
+        rows = result.get('rows', None)
+
+        if descr:
+            descr = [(x[0], x[1], None, None, None, None, None) for x in descr]
+
+        return descr, rows, []
+
+
+
+    #--------------------------------------
     # Public methods
     #
 
     def close(self):
         self.__del__()
+
+
+    def commit(self):
+        self._execute('COMMIT')
 
 
     def connect(self, dsn=None, user='', password='', host=None, database='', port=5432, opt=''):
@@ -611,42 +665,12 @@ class PGClient:
             self.__read_response()
 
 
-    def __fix_arg(a):
-        #
-        # Make an argument SQL-ready: replace None with 'NULL', and escape strings
-        #
-        if a is  None:
-            return 'NULL'
-        if type(a) == types.StringType:
-            return '%s' % a.replace('\\'. '\\\\').replace("'", "\\'")
-        return a
+    def cursor(self):
+        """
+        Get a new cursor object using this connection.
 
-
-    def execute(self, str, *args):
-        if args:
-            argtype = type(arg[0])
-            if argtype in [types.TupleType, types.DictType]:
-                args = args[0] # ignore any other args
-            else:
-                argtype = types.TupleType
-
-            # At this point we know args is either a tuple or a dict
-
-            if argtype == types.TupleType:
-                # Replace plain-format markers with fixed-up tuple parameters
-                str = str % tuple([__fix_arg(a) for a in args])
-            else:
-                # replace pyformat markers with dictionary parameters
-                str = str % dict([(k, __fix_arg(v)) for k,v in args.items()])
-
-        self.__ready = 0
-        self.__result = [{}]
-        self.__send('Q'+str+'\0')
-        while not self.__ready:
-            self.__read_response()
-        result, self.__result = self.__result[:-1], None
-        return result
-
+        """
+        return Cursor(self)
 
     def funcall(self, oid, *args):
         """
@@ -706,6 +730,10 @@ class PGClient:
         self.funcall(self.__funcs['lo_unlink'], oid)
 
 
+    def rollback(self):
+        self._execute('ROLLBACK')
+
+
     def wait_for_notify(self, timeout=-1):
         """
         Wait for an async notification from the backend, which comes
@@ -738,8 +766,134 @@ class PGClient:
                 raise PostgreSQL_Timeout()
 
 
+class Cursor:
+    def __init__(self, conn):
+        self.arraysize = 1
+        self.connection = conn
+        self.description = None
+        self.lastrowid = None
+        self.messages = []
+        self.rowcount = -1
+        self.rownumber = None
+        self.__rows = None
+
+
+    def __iter__(self):
+        """
+        Return an iterator for the result set this cursor holds.
+
+        """
+        return self
+
+
+    def close(self):
+        self.connection = None
+        self.__rows = self.__messages = None
+
+
+    def execute(self, str, *params):
+        self.description, self.__rows, self.messages = self.connection._execute(str, params)
+
+        if self.__rows is None:
+            self.rowcount = -1
+            self.rownumber = None
+        else:
+            self.rowcount = len(self.__rows)
+            self.rownumber = 0
+
+
+    def executemany(self, str,  param_seq):
+        for p in param_seq:
+            self.execute(str, p)
+
+
+    def fetchall(self):
+        """
+        Fetch all remaining rows of a query set, as a list of lists.
+        An empty list is returned if no more rows are available.
+        An Error is raised if no result set exists
+
+        """
+        return self.fetchmany(self.rowcount - self.rownumber)
+
+
+    def fetchone(self):
+        """
+        Fetch the next row of the result set as a list of fields, or None if
+        no more are available.  Will raise an Error if no
+        result set exists.
+
+        """
+        if self.__rows is None:
+            raise Error, 'No result set available'
+
+        n = self.rownumber
+        if n >= self.rowcount:
+            return None
+
+        self.rownumber += 1
+        return self.__rows[n]
+
+
+    def fetchmany(self, size=None):
+        """
+        Fetch all the specified number of rows of a query set, as a list of lists.
+        If no size is specified, then the cursor's .arraysize property is used.
+        An empty list is returned if no more rows are available.
+        An Error is raised if no result set exists
+
+        """
+        if self.__rows is None:
+            raise Error, 'No result set available'
+
+        if size is None:
+            size = self.arraysize
+
+        n = self.rownumber
+        self.rownumber += size
+        return self.__rows[n:self.rownumber]
+
+
+    def next(self):
+        """
+        Return the next row of a result set.  Raises StopIteration
+        if no more rows are available.  Raises an Error if no result set
+        exists.
+
+        """
+        r = self.fetchone()
+        if r is None:
+            raise StopIteration
+        return r
+
+
+    def scroll(self, n, mode='relative'):
+        if self.__rows is None:
+            raise Error, 'No result set available'
+
+        if mode == 'relative':
+            newpos = self.rownumber + n
+        elif mode == 'absolute':
+            newpos = n
+        else:
+            raise ProgrammingError, 'Unknown scroll mode [%s]' % mode
+
+        if (newpos < 0) or (newpos >= self.rowcount):
+            raise IndexError, 'scroll(%d, "%s") target position: %d outsize of range: 0..%d' % (n, mode, newpos, self.rowcount-1)
+
+        self.rownumber = newpos
+
+
+    def setinputsizes(self, sizes):
+        pass
+
+
+    def setoutputsize(size, column=None):
+        pass
+
+
 def connect(dsn=None, user='', password='', host=None, database='', port=5432, opt=''):
-    pg = PGClient()
+    pg = Connection()
     pg.connect(dsn, user, password, host, database, port, opt)
     return pg
 
