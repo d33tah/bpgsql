@@ -7,9 +7,14 @@ BPgSQL unittests
 import unittest
 import bpgsql
 
-TEST_DSN = 'host=10.66.0.1 user=barryp dbname=template1'
+TEST_DSN = 'host=10.66.0.1 user=barryp dbname=test'
 
 class ConnectedTests(unittest.TestCase):
+    """
+    Superclass for test suites that need to be connected
+    to the backend with a test database.
+
+    """
     def setUp(self):
         self.cnx = bpgsql.connect(TEST_DSN)
         self.cur = self.cnx.cursor()
@@ -17,6 +22,31 @@ class ConnectedTests(unittest.TestCase):
     def tearDown(self):
         self.cnx.close()
         self.cnx = self.cur = None
+
+
+class TableTests(ConnectedTests):
+    """
+    Superclass for test suites that may create tables.  Make
+    sure no tables exist before test starts, and clean out any
+    tables left over afterwards.
+
+    """
+    def __drop_existing(self):
+        #
+        # Drop any existing non-system tables
+        #
+        cur = self.cnx.cursor()
+        cur.execute("SELECT tablename FROM pg_tables WHERE tablename NOT LIKE 'pg_%'")
+        tables = [x[0] for x in cur]
+        cur.executemany("DROP TABLE %s", tables)
+
+    def setUp(self):
+        ConnectedTests.setUp(self)
+        self.__drop_existing()
+
+    def tearDown(self):
+        self.__drop_existing()
+        ConnectedTests.tearDown(self)
 
 
 class DBAPIInterfaceTests(unittest.TestCase):
@@ -84,6 +114,13 @@ class TypeTests(ConnectedTests):
         self.assertEqual(len(row), 1)
         self.assertEqual(row[0], -273)
 
+    def test_float(self):
+        self.cur.execute("SELECT sin(0) - 0.5")
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], -0.5)
+
     def test_long(self):
         self.cur.execute("SELECT trunc(pow(2,40))")
         self.assertEqual(self.cur.rowcount, 1)
@@ -133,8 +170,17 @@ class SelectTests(ConnectedTests):
 
 
 class CursorTests(ConnectedTests):
+    def test_close(self):
+        self.cur.close()
+        self.assertEqual(self.cur.connection, None)
+
+        # a closed cursor should otherwise act just like an unused one
+        self.test_initial_properties()
+
+
     def test_connection(self):
         self.assertEqual(self.cur.connection, self.cnx)
+
 
     def test_initial_properties(self):
         """
@@ -205,6 +251,15 @@ class CursorTests(ConnectedTests):
         self.assertEqual(self.cur.fetchone(), None)     # Should still be no more rows
 
 
+class BasicTableTests(TableTests):
+        def test_create_existing(self):
+            #
+            # Creating a table with a name that already exists should raise an error
+            #
+            self.cur.execute("CREATE TABLE foo (id integer, name text)")
+            self.assertRaises(bpgsql.Error, self.cur.execute, "CREATE TABLE foo (id integer, name text)")
+
+
 def main():
     all_tests = []
     all_tests.append(unittest.makeSuite(DBAPIInterfaceTests, 'test_'))
@@ -212,6 +267,7 @@ def main():
     all_tests.append(unittest.makeSuite(TypeTests, 'test_'))
     all_tests.append(unittest.makeSuite(SelectTests, 'test_'))
     all_tests.append(unittest.makeSuite(CursorTests, 'test_'))
+    all_tests.append(unittest.makeSuite(BasicTableTests, 'test_'))
 
     suite = unittest.TestSuite(all_tests)
 

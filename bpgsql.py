@@ -217,11 +217,12 @@ class _ResultSet:
     # Helper class only used internally by the Connection class
     #
     def __init__(self):
-        self.description = None
-        self.num_fields = 0
-        self.null_byte_count = 0
-        self.rows = None
         self.conversion = None
+        self.description = None
+        self.error = None
+        self.null_byte_count = 0
+        self.num_fields = 0
+        self.rows = None
 
 
     def set_description(self, desc_list):
@@ -669,6 +670,9 @@ class Connection:
         # Convert old-style results to what the new Cursor class expects
         result = result[0]
 
+        if result.error:
+            raise DatabaseError, result.error
+
         # Convert Pgsql row descriptions to DB-API 2.0 row descriptions, somewhat... ###FIXME###
         descr = result.description
         if descr:
@@ -879,8 +883,7 @@ class Cursor:
 
 
     def close(self):
-        self.connection = None
-        self.__rows = self.__messages = None
+        self.__init__(None)
 
 
     def execute(self, cmd, args=None):
