@@ -1,15 +1,39 @@
 """
 Barebones PostgreSQL
 
+Copyright 2001-2004 by Barry Pederson <bp@barryp.org>
+All rights reserved.
 
-2001-10-28 Barry Pederson <bp@barryp.org>
+Permission to use, copy, modify, and distribute this software and its
+documentation for any purpose and without fee is hereby granted,
+provided that the above copyright notice appear in all copies and that
+both that copyright notice and this permission notice appear in
+supporting documentation, and that the copyright owner's name not be
+used in advertising or publicity pertaining to distribution of the
+software without specific, written prior permission.
 
+THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN
+NO EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE
+USE OR PERFORMANCE OF THIS SOFTWARE.
+
+    2001-10-28  Started
     2002-04-06  Changed connect args to be more like the Python DB-API
     2004-03-27  Reworked to follow DB-API 2.0
 
 """
 import select, socket, sys, types
 from struct import pack, unpack
+
+#
+# Module Globals specified by DB-API 2.0
+#
+apilevel = '2.0'
+threadsafety = 1      # Threads may share the module, but not connections.
+paramstyle = 'pyformat'
 
 #
 # Exception hierarchy from DB-API 2.0 spec
@@ -587,19 +611,29 @@ class PGClient:
             self.__read_response()
 
 
-    def execute(self, str, args=None, debug=DEBUG):
-        if args != None:
-            na = []
-            for a in args:
-                if a == None:
-                    a = 'NULL'
-                elif type(a) == types.StringType:
-                    a = "'" + a.replace('\\', '\\\\').replace("'", "\\'") + "'"
-                na.append(a)
-            str = str % tuple(na)
+    def __fix_arg(a):
+        #
+        # Make an argument SQL-ready: replace None with 'NULL', and escape strings
+        #
+        if a is  None:
+            return 'NULL'
+        if type(a) == types.StringType:
+            return '%s' % a.replace('\\'. '\\\\').replace("'", "\\'")
+        return a
 
-        if debug:
-            print 'execute', str
+
+    def execute(self, str, args=None):
+        if args is not None:
+            argtype = type(args)
+            if argtype == types.TupleType:
+                # Replace plain format markers with fixed-up tuple parameters
+                str = str % tuple([__fix_arg(a) for a in args])
+            elif argtype == types.DictType:
+                # replace pyformat markers with dictionary parameters
+                str = str % dict([(k, __fix_arg(v)) for k,v in args.items()])
+            elif argtype == types.StringType:
+                # replace plain format marker with singleton string argument
+                str = str % __fix_arg(args)
 
         self.__ready = 0
         self.__result = [{}]
