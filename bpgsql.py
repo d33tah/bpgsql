@@ -25,7 +25,7 @@ USE OR PERFORMANCE OF THIS SOFTWARE.
     2004-03-27  Reworked to follow DB-API 2.0 (http://www.python.org/peps/pep-0249.html)
 
 """
-import select, socket, sys, types
+import errno, select, socket, sys, types
 from struct import pack, unpack
 
 #
@@ -272,7 +272,7 @@ class _Connection:
 
     def __del__(self):
         if self.__socket:
-            self.__socket.send('X')
+            self.__send('X')
             self.__socket.close()
             self.__socket = None
 
@@ -323,7 +323,7 @@ class _Connection:
             print '__read_bytes(%d)' % nBytes
 
         while len(self.__input_buffer) < nBytes:
-            d = self.__socket.recv(4096)
+            d = self.__recv(4096)
             if d:
                 self.__input_buffer += d
             else:
@@ -344,7 +344,7 @@ class _Connection:
                 return result
             except:
                 # need more data
-                d = self.__socket.recv(4096)
+                d = self.__recv(4096)
                 if d:
                     self.__input_buffer += d
                 else:
@@ -415,6 +415,15 @@ class _Connection:
         result.rows.append(row)
 
 
+    def __recv(self, bufsize):
+        while 1:
+            try:
+                return self.__socket.recv(bufsize)
+            except socket.error, serr:
+                if serr[0] != errno.EINTR:
+                    raise
+
+
     def __send(self, data):
         #
         # Send data to the backend, make sure it's all sent
@@ -426,7 +435,12 @@ class _Connection:
             raise InterfaceError, 'Connection not open'
 
         while data:
-            nSent = self.__socket.send(data)
+            try:
+                nSent = self.__socket.send(data)
+            except socket.error, serr:
+                if serr[0] != errno.EINTR:
+                    raise
+                continue
             data = data[nSent:]
 
 
