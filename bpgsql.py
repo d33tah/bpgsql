@@ -5,11 +5,53 @@ Barebones PostgreSQL
 2001-10-28 Barry Pederson <bp@barryp.org>
 
     2002-04-06  Changed connect args to be more like the Python DB-API
+    2004-03-27  Reworked to follow DB-API 2.0
 
 """
 import select, socket, sys, types
 from struct import pack, unpack
 
+#
+# Exception hierarchy from DB-API 2.0 spec
+#
+import exceptions
+class Error(exceptions.StandardError):
+    pass
+
+class Warning(exceptions.StandardError):
+    pass
+
+class InterfaceError(Error):
+    pass
+
+class DatabaseError(Error):
+    pass
+
+class InternalError(DatabaseError):
+    pass
+
+class OperationalError(DatabaseError):
+    pass
+
+class ProgrammingError(DatabaseError):
+    pass
+
+class IntegrityError(DatabaseError):
+    pass
+
+class DataError(DatabaseError):
+    pass
+
+class NotSupportedError(DatabaseError):
+    pass
+
+
+#
+# Custom exceptions raised by this driver
+#
+
+class PostgreSQL_Timeout(InterfaceError):
+    pass
 
 #
 # Constants relating to Large Object support
@@ -23,14 +65,6 @@ SEEK_END    = 2
 
 DEBUG = 0
 
-#
-# Exceptions raised by this driver
-#
-class PostgreSQL_Error(Exception):
-    pass
-
-class PostgreSQL_Timeout(PostgreSQL_Error):
-    pass
 
 
 def parseDSN(s):
@@ -169,7 +203,7 @@ class PGClient:
             if d:
                 self.__input_buffer += d
             else:
-                raise PostgreSQL_Error('Connection to backend closed')
+                raise OperationalError('Connection to backend closed')
         result, self.__input_buffer = self.__input_buffer[:nBytes], self.__input_buffer[nBytes:]
         return result
 
@@ -190,7 +224,7 @@ class PGClient:
                 if d:
                     self.__input_buffer += d
                 else:
-                    raise PostgreSQL_Error('Connection to backend closed')
+                    raise OperationalError('Connection to backend closed')
 
 
     def __read_response(self):
@@ -215,7 +249,7 @@ class PGClient:
         if method:
             method(self)
         else:
-            raise PostgreSQL_Error('Unrecognized packet type: %s' % pkt_type)
+            raise InterfaceError('Unrecognized packet type from server: %s' % pkt_type)
 
 
     def __read_row(self, ascii=1):
@@ -332,7 +366,7 @@ class PGClient:
             self.__result[-1]['error'] = self.__read_string()
             self.__result.append({})
         else:
-            raise PostgreSQL_Error(self.__read_string())
+            raise DatabaseError(self.__read_string())
 
 
     def _pkt_G(self):
@@ -419,9 +453,9 @@ class PGClient:
             self.__authenticated = 1
             #print 'Authenticated!'
         elif code == 1:
-            raise PostgreSQL_Error('Kerberos V4 authentication is required')
+            raise InterfaceError('Kerberos V4 authentication is required by server, but not supported by this client')
         elif code == 2:
-            raise PostgreSQL_Error('Kerberos V5 authentication is required')
+            raise InterfaceError('Kerberos V5 authentication is required by server, but not supported by this client')
         elif code == 3:
             self.__send(pack('!i', len(self.__passwd)+5) + self.__passwd + '\0')
         elif code == 4:
@@ -429,7 +463,7 @@ class PGClient:
             try:
                 import crypt
             except:
-                raise PostgreSQL_Error('Encrypted authentication is required by PostgreSQL, but Python crypt module not available')
+                raise InterfaceError('Encrypted authentication is required by server, but Python crypt module not available')
             cpwd = crypt.crypt(self.__passwd, salt)
             self.__send(pack('!i', len(cpwd)+5) + cpwd + '\0')
         elif code == 5:
@@ -440,7 +474,7 @@ class PGClient:
             m = 'md5' + m + '\0'
             self.__send(pack('!i', len(m)+4) + m)
         else:
-            raise PostgreSQL_Error('Unknown startup response code: R%d (unknown password encryption?)' % code)
+            raise InterfaceError('Unknown startup response code: R%d (unknown password encryption?)' % code)
 
 
     def _pkt_T(self):
@@ -470,7 +504,7 @@ class PGClient:
                 result_size = unpack('!i', self.__read_bytes(4))[0]
                 self.__func_result = self.__read_bytes(result_size)
             else:
-                raise PostgreSQL_Error('Unexpected byte: [%s] in Function call reponse' % ch)
+                raise InterfaceError('Unexpected byte: [%s] in Function call reponse' % ch)
 
 
     def _pkt_Z(self):
