@@ -420,6 +420,9 @@ class _Connection:
         if DEBUG:
             print 'Send [%s]' % data
 
+        if self.__socket is None:
+            raise InterfaceError, 'Connection not open'
+
         while data:
             nSent = self.__socket.send(data)
             data = data[nSent:]
@@ -757,6 +760,8 @@ class _Connection:
         connection.
 
         """
+        if self.__socket is None:
+            raise InterfaceError, "Can't close connection that's not open"
         self.__del__()
 
 
