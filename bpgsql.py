@@ -93,7 +93,7 @@ PGSQL_TO_PYTHON_TYPES = {   'float4': float,
                             'int2': int,
                             'int4': int,
                             'int8': long,
-                            'oid' : long,
+                            'oid' : int,
                             'numeric': float        #Should be some kind of decimal?
                             }
 
