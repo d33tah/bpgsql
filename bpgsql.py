@@ -93,7 +93,7 @@ PGSQL_TO_PYTHON_TYPES = {   'float4': float,
                             'int2': int,
                             'int4': int,
                             'int8': long,
-                            'oid' : int,
+                            'oid' : long,
                             'numeric': float        #Should be some kind of decimal?
                             }
 
@@ -797,9 +797,13 @@ class _Connection:
             print 'funcall', funcname, args
 
         self.__ready = 0
-        self.__send(pack('!2sii', 'F\0', oid, len(args)))
+        self.__send(pack('!2sIi', 'F\0', oid, len(args)))
         for arg in args:
-            if type(arg) == types.IntType:
+            atype = type(arg)
+            if (atype == types.LongType) and (arg >= 0):
+                # Make sure positive longs, such as OIDs, get sent back as unsigned ints
+                self.__send(pack('!iI', 4, arg))   
+            elif (atype == types.IntType) or (atype == types.LongType):
                 self.__send(pack('!ii', 4, arg))
             else:
                 self.__send(pack('!i', len(arg)))
