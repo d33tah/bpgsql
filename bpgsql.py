@@ -940,11 +940,15 @@ class _Cursor:
         or pyformat (...WHERE foo=%(name)s...) paramstyles.
 
         """
+        self.rowcount = -1
+        self.rownumber = None
+        self.description = None
+        self.__rows = None
+        self.messages = []
+
         self.description, self.__rows, self.messages = self.connection._execute(cmd, args)
 
         if self.description is None:
-            self.rowcount = -1
-            self.rownumber = None
             self.__rows = None
         else:
             self.rowcount = len(self.__rows)
