@@ -938,9 +938,10 @@ class _Cursor:
         """
         self.description, self.__rows, self.messages = self.connection._execute(cmd, args)
 
-        if self.__rows is None:
+        if self.description is None:
             self.rowcount = -1
             self.rownumber = None
+            self.__rows = None
         else:
             self.rowcount = len(self.__rows)
             self.rownumber = 0
