@@ -38,7 +38,8 @@ class TableTests(ConnectedTests):
         cur = self.cnx.cursor()
         cur.execute("SELECT tablename FROM pg_tables WHERE tablename NOT LIKE 'pg_%'")
         tables = [x[0] for x in cur]
-        cur.executemany("DROP TABLE %s", tables)
+        for t in tables:
+            cur.execute("DROP TABLE " + t)
 
     def setUp(self):
         ConnectedTests.setUp(self)
@@ -258,6 +259,18 @@ class BasicTableTests(TableTests):
             #
             self.cur.execute("CREATE TABLE foo (id integer, name text)")
             self.assertRaises(bpgsql.Error, self.cur.execute, "CREATE TABLE foo (id integer, name text)")
+
+        def test_fill_table(self):
+            self.cur.execute("CREATE TABLE foo (id integer, name text)")
+            for i in range(100):
+                self.cur.execute("INSERT INTO foo (id, name) VALUES (%d, %s)", (i, 'bar-' + str(i)))
+
+            self.cur.execute("SELECT * FROM foo")
+            self.assertEqual(self.cur.rowcount, 100)
+
+            self.cur.scroll(99)
+            row = self.cur.fetchone()
+            self.assertEqual(row[1], 'bar-99')
 
 
 def main():

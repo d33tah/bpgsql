@@ -164,7 +164,7 @@ def _fix_arg(a):
     if a is  None:
         return 'NULL'
     if type(a) == types.StringType:
-        return '%s' % a.replace('\\', '\\\\').replace("'", "\\'")
+        return "'%s'" % a.replace('\\', '\\\\').replace("'", "\\'")
     return a
 
 
