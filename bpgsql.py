@@ -78,6 +78,17 @@ class PostgreSQL_Timeout(InterfaceError):
     pass
 
 #
+# Conversions from PostgreSQL type names found in the pg_type table
+# to Python classes/conversion_functions. Anything not listed here
+# stays a plain string
+#
+TYPE_NAME_CONVERSION = {    'int2': int,
+                            'int4': int,
+                            'int8': long,
+                            'float4': float,
+                            'float8': float}
+
+#
 # Constants relating to Large Object support
 #
 INV_WRITE   = 0x00020000
@@ -193,6 +204,30 @@ class _LargeObject:
         return unpack('!i', r)[0]
 
 
+class ResultSet:
+    def __init__(self):
+        self.description = None
+        self.num_fields = 0
+        self.null_byte_count = 0
+        self.rows = None
+
+    def set_description(self, desc_list):
+        self.description = desc_list
+        self.num_fields = len(desc_list)
+        self.null_byte_count = (self.num_fields + 7) >> 3
+
+
+def _identity(d):
+    """
+    Identity function, returns whatever was passed to it,
+    used when we have a PostgreSQL type for which we don't
+    have a function to convert from a PostgreSQL string
+    representation to a Python object - so the item
+    basically remains a string.
+    """
+    return d
+
+
 class Connection:
     def __init__(self):
         self.__backend_pid = None
@@ -202,16 +237,36 @@ class Connection:
         self.__authenticated = 0
         self.__ready = 0
         self.__result = None
+        self.__current_result = None
         self.__notify_queue = []
         self.__func_result = None
         self.__lo_funcs = {}
         self.__lo_funcnames = {}
+        self.__type_oid_name = {}
+        self.__type_oid_conversion = {}
 
     def __del__(self):
         if self.__socket:
             self.__socket.send('X')
             self.__socket.close()
             self.__socket = None
+
+
+    def __initialize_type_map(self):
+        """
+        Query the backend to find out a mapping for type_oid -> type_name, and
+        then lookup the map of type_name -> conversion_function, to come up
+        with a map of type_oid -> conversion_function
+        """
+        cur = self.cursor()
+        cur.execute('SELECT oid, typname FROM pg_type')
+
+        # Make a dictionary of type oids to type names
+        self.__type_oid_name = dict([(int(x[0]), x[1]) for x in cur])
+
+        # Fill a dictionary of type oids to conversion functions
+        for k, v in self.__type_oid_name.items():
+            self.__type_oid_conversion[k] = TYPE_NAME_CONVERSION.get(v, _identity)
 
 
     def __lo_init(self):
@@ -224,6 +279,16 @@ class Connection:
             oid = int(r[1])
             self.__lo_funcs[r[0]] = oid
             self.__lo_funcnames[oid] = r[0]
+
+
+    def __new_result(self):
+        #
+        # Start a new ResultSet
+        #
+        if self.__result is None:
+            self.__result = []
+        self.__current_result = ResultSet()
+        self.__result.append(self.__current_result)
 
 
     def __read_bytes(self, nBytes):
@@ -291,7 +356,7 @@ class Connection:
         #
         # Read an ASCII or Binary Row
         #
-        null_byte_count = (self.__field_count + 7) >> 3   # how many bytes we need to hold null bits
+        null_byte_count = self.__current_result.null_byte_count
 
         # check if we need to use longs (more than 32 fields)
         if null_byte_count > 4:
@@ -310,19 +375,20 @@ class Connection:
 
         # read each field into a row
         row = []
-        for i in range(self.__field_count):
+        for field_num in range(self.__current_result.num_fields):
             if null_bits & field_mask:
                 # field has data present, read what was sent
                 field_size = unpack('!i', self.__read_bytes(4))[0]
                 if ascii:
                     field_size -= 4
-                row.append(self.__read_bytes(field_size))
+                data = self.__read_bytes(field_size)
+                row.append(self.__current_result.conversion[field_num](data))
             else:
                 # field has no data (is null)
                 row.append(None)
             field_mask >>= 1
 
-        self.__result[-1]['rows'].append(row)
+        self.__current_result.rows.append(row)
 
 
     def __send(self, data):
@@ -382,8 +448,8 @@ class Connection:
         #
         # Completed Response
         #
-        self.__result[-1]['completed'] = self.__read_string()
-        self.__result.append({})
+        self.__current_result.completed = self.__read_string()
+        self.__new_result()
 
 
     def _pkt_D(self):
@@ -397,9 +463,9 @@ class Connection:
         #
         # Error Response
         #
-        if self.__result:
-            self.__result[-1]['error'] = self.__read_string()
-            self.__result.append({})
+        if self.__current_result:
+            self.__current_result.error = self.__read_string()
+            self.__new_result()
         else:
             raise DatabaseError(self.__read_string())
 
@@ -475,8 +541,7 @@ class Connection:
         # Cursor Response
         #
         cursor = self.__read_string()
-        #print 'Cursor:', cursor
-        self.__result[-1]['rows'] = []
+        self.__current_result.rows = []
 
 
     def _pkt_R(self):
@@ -522,8 +587,12 @@ class Connection:
             fieldname = self.__read_string()
             oid, type_size, type_modifier = unpack('!ihi', self.__read_bytes(10))
             descr.append((fieldname, oid, type_size, type_modifier))
-        self.__field_count = nFields
-        self.__result[-1]['description'] = descr
+
+        # Save the field description list
+        self.__current_result.set_description(descr)
+
+        # build a list of field conversion functions we can use against each row
+        self.__current_result.conversion = [self.__type_oid_conversion.get(k[1], _identity) for k in descr]
 
 
     def _pkt_V(self):
@@ -578,7 +647,8 @@ class Connection:
                 str = str % dict([(k, __fix_arg(v)) for k,v in args.items()])
 
         self.__ready = 0
-        self.__result = [{}]
+        self.__result = None
+        self.__new_result()
         self.__send('Q'+str+'\0')
         while not self.__ready:
             self.__read_response()
@@ -586,13 +656,12 @@ class Connection:
 
         # Convert old-style results to what the new Cursor class expects
         result = result[0]
-        descr = result.get('description', None)
-        rows = result.get('rows', None)
-
+        descr = result.description
+        print descr
         if descr:
-            descr = [(x[0], x[1], None, None, None, None, None) for x in descr]
+            descr = [(x[0], self.__type_oid_name.get(x[1], '???'), None, None, None, None, None) for x in descr]
 
-        return descr, rows, []
+        return descr, result.rows, []
 
 
 
@@ -663,6 +732,8 @@ class Connection:
         self.__send(pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
         while not self.__ready:
             self.__read_response()
+
+        self.__initialize_type_map()
 
 
     def cursor(self):
