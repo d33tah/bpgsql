@@ -21,6 +21,7 @@ SEEK_SET    = 0
 SEEK_CUR    = 1
 SEEK_END    = 2
 
+DEBUG = 0
 
 #
 # Exceptions raised by this driver
@@ -135,7 +136,7 @@ class PGClient:
         self.__notify_queue = []
         self.__func_result = None
         self.__lo_funcs = {}
-
+        self.__lo_funcnames = {}
 
     def __del__(self):
         if self.__socket:
@@ -151,13 +152,18 @@ class PGClient:
         # 
         rows = self.execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")[0]['rows']
         for r in rows:
-            self.__lo_funcs[r[0]] = int(r[1])
-
+            oid = int(r[1])
+            self.__lo_funcs[r[0]] = oid
+            self.__lo_funcnames[oid] = r[0]
             
+
     def __read_bytes(self, nBytes):
         #
         # Read the specified number of bytes from the backend
         #
+        if DEBUG:
+            print '__read_bytes(%d)' % nBytes
+            
         while len(self.__input_buffer) < nBytes:
             d = self.__socket.recv(4096)
             if d:
@@ -197,8 +203,14 @@ class PGClient:
         #  method looks up a method named _pkt_<c> and calls that
         #  to handle the response
         #
-        #print '>[%s]' % self.__input_buffer
+        if DEBUG:
+            print '>[%s]' % self.__input_buffer
+
         pkt_type = self.__read_bytes(1)
+        
+        if DEBUG:
+            print 'pkt_type:', pkt_type
+            
         method = self.__class__.__dict__.get('_pkt_' + pkt_type, None)
         if method:
             method(self)
@@ -211,21 +223,23 @@ class PGClient:
         # Read an ASCII or Binary Row
         #
         result = []
-        field_bits = ord(self.__read_bytes(1))  # start off with one byte's worth of field bits
-        extra_bytes = self.__field_count >> 3   # how many more we'll be getting
-        field_mask = 128
-
+                
+        null_bytes = (self.__field_count + 7) >> 3   # how many bytes we need to hold null bits
+            
         # check if we need to use longs (more than 32 fields)
-        if extra_bytes > 3:
-            field_bits = long(field_bits)
+        if null_bytes > 4:
+            field_bits = 0L
             field_mask = 128L
-
-        # read additional field bits if necessary
-        if extra_bytes:            
-            for ch in self.__read_bytes(extra_bytes):
+        else:
+            field_bits = 0
+            field_mask = 128
+            
+        # read byte holding null bits
+        if null_bytes:            
+            for ch in self.__read_bytes(null_bytes):
                 field_bits = (field_bits << 8) | ord(ch)            
-                field_mask <<= 8
-
+            field_mask <<= (null_bytes - 1) * 8
+            
         for i in range(self.__field_count):
             if field_bits & field_mask:
                 field_size = unpack('!i', self.__read_bytes(4))[0]
@@ -243,7 +257,9 @@ class PGClient:
         #
         # Send data to the backend, make sure it's all sent        
         #
-        #print 'Send [%s]' % data
+        if DEBUG:
+            print 'Send [%s]' % data
+
         while data:
             nSent = self.__socket.send(data)
             data = data[nSent:]
@@ -413,7 +429,15 @@ class PGClient:
                 raise PostgreSQL_Error('Encrypted authentication is required by PostgreSQL, but Python crypt module not available')
             cpwd = crypt.crypt(self.__passwd, salt)               
             self.__send(pack('!i', len(cpwd)+5) + cpwd + '\0')
+        elif code == 5:
+            import md5
 
+            m = md5.new(self.__passwd + self.__userid).hexdigest()
+            m = md5.new(m + self.__read_bytes(4)).hexdigest()
+            m = 'md5' + m + '\0'
+            self.__send(pack('!i', len(m)+4) + m)
+        else:
+            raise PostgreSQL_Error('Unknown startup response code: R%d (unknown password encryption?)' % code)
                
     def _pkt_T(self):
         #
@@ -515,8 +539,8 @@ class PGClient:
             s.connect((args['host'], int(args['port'])))
 
         self.__socket = s
-        self.__passwd = password
-        self.__userid = user
+        self.__passwd = args['password']
+        self.__userid = args['user']
 
         # Send startup packet specifying protocol version 2.0
         #  (works with PostgreSQL 6.3 or higher?)
@@ -525,7 +549,7 @@ class PGClient:
             self.__read_response()        
             
             
-    def execute(self, str, args=None, debug=0):
+    def execute(self, str, args=None, debug=DEBUG):
         if args != None:
             na = []
             for a in args:
@@ -537,7 +561,7 @@ class PGClient:
             str = str % tuple(na)
             
         if debug:                        
-            print '>>', str
+            print 'execute', str
             
         self.__ready = 0
         self.__result = [{}]
@@ -554,6 +578,10 @@ class PGClient:
         the oid of the function, and have the args supplied as
         ints or strings.
         """
+        if DEBUG:
+            funcname = self.__lo_funcnames.get(oid, str(oid))
+            print 'funcall', funcname, args
+
         self.__ready = 0
         self.__send(pack('!2sii', 'F\0', oid, len(args)))
         for arg in args:
@@ -634,7 +662,7 @@ class PGClient:
                 raise PostgreSQL_Timeout()                
 
 
-def connect(dsn=None, user='', password='', host='localhost', database='', port=5432, opt=''):
+def connect(dsn=None, user='', password='', host=None, database='', port=5432, opt=''):
     pg = PGClient()
     pg.connect(dsn, user, password, host, database, port, opt)
     return pg
