@@ -155,7 +155,7 @@ def parseDSN(s):
     return result
 
 
-def __fix_arg(a):
+def _fix_arg(a):
     #
     # Make an argument SQL-ready: replace None with 'NULL', and escape strings
     #
@@ -379,10 +379,10 @@ class Connection:
 
         # read bytes holding null bits and setup the field mask
         # to point at the first (leftmost) field
-        if null_byte_count:
-            for ch in self.__read_bytes(null_byte_count):
+        if result.null_byte_count:
+            for ch in self.__read_bytes(result.null_byte_count):
                 null_bits = (null_bits << 8) | ord(ch)
-            field_mask <<= (null_byte_count - 1) * 8
+            field_mask <<= (result.null_byte_count - 1) * 8
 
         # read each field into a row
         row = []
@@ -640,27 +640,26 @@ class Connection:
     #--------------------------------------
     # Helper function for Cursor objects
     #
-    def _execute(self, str, *args):
-        if args:
-            argtype = type(args[0])
-            if argtype in [types.TupleType, types.DictType]:
-                args = args[0] # ignore any other args
-            else:
+    def _execute(self, cmd, args=None):
+        if args is not None:
+            argtype = type(args)
+            if argtype not in [types.TupleType, types.DictType]:
+                args = (args,)
                 argtype = types.TupleType
 
             # At this point we know args is either a tuple or a dict
 
             if argtype == types.TupleType:
                 # Replace plain-format markers with fixed-up tuple parameters
-                str = str % tuple([__fix_arg(a) for a in args])
+                cmd = cmd % tuple([_fix_arg(a) for a in args])
             else:
                 # replace pyformat markers with dictionary parameters
-                str = str % dict([(k, __fix_arg(v)) for k,v in args.items()])
+                cmd = cmd % dict([(k, _fix_arg(v)) for k,v in args.items()])
 
         self.__ready = 0
         self.__result = None
         self.__new_result()
-        self.__send('Q'+str+'\0')
+        self.__send('Q'+cmd+'\0')
         while not self.__ready:
             self.__read_response()
         result, self.__result = self.__result[:-1], None
@@ -882,8 +881,8 @@ class Cursor:
         self.__rows = self.__messages = None
 
 
-    def execute(self, str, *params):
-        self.description, self.__rows, self.messages = self.connection._execute(str, params)
+    def execute(self, cmd, args=None):
+        self.description, self.__rows, self.messages = self.connection._execute(cmd, args)
 
         if self.__rows is None:
             self.rowcount = -1
@@ -985,7 +984,7 @@ class Cursor:
 
 def connect(dsn=None, user='', password='', host=None, database='', port=5432, opt=''):
     pg = Connection()
-    pg.connect(dsn, user, password, host, database, port, opt)
+    pg.connect(dsn, user, password, host, database, int(port), opt)
     return pg
 
 # ---- EOF ----
