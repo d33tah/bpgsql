@@ -1,5 +1,5 @@
 """
-Barebones PostgreSQL 
+Barebones PostgreSQL
 
 
 2001-10-28 Barry Pederson <bp@barryp.org>
@@ -35,7 +35,7 @@ class PostgreSQL_Timeout(PostgreSQL_Error):
 
 def parseDSN(s):
     """
-    Parse a string containg connection info in the form: 
+    Parse a string containg connection info in the form:
        "keyword1=val1 keyword2='val2 with space' keyword3 = val3"
     into a dictionary {'keyword1': 'val1', 'keyword2': 'val2 with space', 'keyword3': 'val3'}
 
@@ -85,16 +85,16 @@ class _LargeObject:
     Make a PostgreSQL Large Object look somewhat like
     a Python file.  Should be created from PGClient
     open or create methods.
-    """ 
+    """
     def __init__(self, client, fd):
         self.__client = client
         self.__fd = fd
-        
+
     def __del__(self):
         if self.__client:
             self.close()
-        
-    def close(self):        
+
+    def close(self):
         """
         Close an opened Large Object
         """
@@ -108,22 +108,22 @@ class _LargeObject:
 
     def read(self, len):
         return self.__client._lo_funcall('loread', self.__fd, len)
-        
+
     def seek(self, offset, whence):
         self.__client._lo_funcall('lo_lseek', self.__fd, offset, whence)
-    
+
     def tell(self):
         r = self.__client._lo_funcall('lo_tell', self.__fd)
-        return unpack('!i', r)[0]    
-    
+        return unpack('!i', r)[0]
+
     def write(self, data):
         """
         Write data to lobj, return number of bytes written
         """
         r = self.__client._lo_funcall('lowrite', self.__fd, data)
-        return unpack('!i', r)[0]  
-    
-    
+        return unpack('!i', r)[0]
+
+
 class PGClient:
     def __init__(self):
         self.__backend_pid = None
@@ -149,13 +149,13 @@ class PGClient:
         #
         # Make up a dictionary mapping function names beginning with "lo" to function oids
         # (there may be some non-lobject functions in there, but that should be harmless)
-        # 
+        #
         rows = self.execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")[0]['rows']
         for r in rows:
             oid = int(r[1])
             self.__lo_funcs[r[0]] = oid
             self.__lo_funcnames[oid] = r[0]
-            
+
 
     def __read_bytes(self, nBytes):
         #
@@ -163,7 +163,7 @@ class PGClient:
         #
         if DEBUG:
             print '__read_bytes(%d)' % nBytes
-            
+
         while len(self.__input_buffer) < nBytes:
             d = self.__socket.recv(4096)
             if d:
@@ -171,7 +171,7 @@ class PGClient:
             else:
                 raise PostgreSQL_Error('Connection to backend closed')
         result, self.__input_buffer = self.__input_buffer[:nBytes], self.__input_buffer[nBytes:]
-        return result                            
+        return result
 
 
     def __read_string(self, terminator='\0'):
@@ -191,14 +191,14 @@ class PGClient:
                     self.__input_buffer += d
                 else:
                     raise PostgreSQL_Error('Connection to backend closed')
-                    
+
 
     def __read_response(self):
         #
         # Read a single response from the backend
         #  Looks at the next byte, and calls a more specific
         #  method the handle the rest of the response
-        # 
+        #
         #  PostgreSQL responses begin with a single character <c>, this
         #  method looks up a method named _pkt_<c> and calls that
         #  to handle the response
@@ -207,25 +207,25 @@ class PGClient:
             print '>[%s]' % self.__input_buffer
 
         pkt_type = self.__read_bytes(1)
-        
+
         if DEBUG:
             print 'pkt_type:', pkt_type
-            
+
         method = self.__class__.__dict__.get('_pkt_' + pkt_type, None)
         if method:
             method(self)
         else:
             raise PostgreSQL_Error('Unrecognized packet type: %s' % pkt_type)
-                    
-    
+
+
     def __read_row(self, ascii=1):
         #
         # Read an ASCII or Binary Row
         #
         result = []
-                
+
         null_bytes = (self.__field_count + 7) >> 3   # how many bytes we need to hold null bits
-            
+
         # check if we need to use longs (more than 32 fields)
         if null_bytes > 4:
             field_bits = 0L
@@ -233,29 +233,29 @@ class PGClient:
         else:
             field_bits = 0
             field_mask = 128
-            
+
         # read byte holding null bits
-        if null_bytes:            
+        if null_bytes:
             for ch in self.__read_bytes(null_bytes):
-                field_bits = (field_bits << 8) | ord(ch)            
+                field_bits = (field_bits << 8) | ord(ch)
             field_mask <<= (null_bytes - 1) * 8
-            
+
         for i in range(self.__field_count):
             if field_bits & field_mask:
                 field_size = unpack('!i', self.__read_bytes(4))[0]
                 if ascii:
-                    field_size -= 4                                    
+                    field_size -= 4
                 result.append(self.__read_bytes(field_size))
             else:
                 result.append(None)
-            field_mask >>= 1 
-            
-        self.__result[-1]['rows'].append(result)                               
-            
-                   
+            field_mask >>= 1
+
+        self.__result[-1]['rows'].append(result)
+
+
     def __send(self, data):
         #
-        # Send data to the backend, make sure it's all sent        
+        # Send data to the backend, make sure it's all sent
         #
         if DEBUG:
             print 'Send [%s]' % data
@@ -279,17 +279,17 @@ class PGClient:
             r, w, e = select.select([self.__socket], [], [], timeout)
         else:
             r, w, e = select.select([self.__socket], [], [])
-            
+
         if r:
             return 1
         else:
             return 0
-                        
-    
+
+
 
     #-----------------------------------
     #  Packet Handling Methods
-    # 
+    #
 
     def _pkt_A(self):
         #
@@ -297,30 +297,30 @@ class PGClient:
         #
         pid = unpack('!i', self.__read_bytes(4))[0]
         self.__notify_queue.append((self.__read_string(), pid))
-            
-            
+
+
     def _pkt_B(self):
         #
         # Binary Row
         #
         print self.__read_row(0)
-            
-                   
+
+
     def _pkt_C(self):
         #
         # Completed Response
         #
         self.__result[-1]['completed'] = self.__read_string()
         self.__result.append({})
-                    
-                   
+
+
     def _pkt_D(self):
         #
         # ASCII Row
         #
         self.__read_row()
-            
-                   
+
+
     def _pkt_E(self):
         #
         # Error Response
@@ -330,8 +330,8 @@ class PGClient:
             self.__result.append({})
         else:
             raise PostgreSQL_Error(self.__read_string())
-                           
-                        
+
+
     def _pkt_G(self):
         #
         # CopyIn Response from self.stdin if available, or
@@ -349,8 +349,8 @@ class PGClient:
             s = stdin.readline()
             if (not s) or (s == '\\.\n'):
                 break
-            self.__send(s) 
-            lastline = s                               
+            self.__send(s)
+            lastline = s
         if lastline and (lastline[-1] != '\n'):
             self.__send('\n')
         self.send('\\.\n')
@@ -359,14 +359,14 @@ class PGClient:
     def _pkt_H(self):
         #
         # CopyOut Response to self.stdout if available, or
-        # sys.stdout    Doesn't write the final terminating line: 
+        # sys.stdout    Doesn't write the final terminating line:
         #  '\.'  (one backslash followed by a period)
         #
         if hasattr(self, 'stdout') and self.stdout:
             stdout = self.stdout
         else:
             stdout = sys.stdout
-            
+
         while 1:
             s = self.__read_string('\n')
             if s == '\\.':
@@ -390,14 +390,14 @@ class PGClient:
         self.__backend_pid, self.__backend_key = unpack('!ii', self.__read_bytes(8))
         #print 'Backend Key Data, pid: %d, key: %d' % (self.__backend_pid, self.__backend_key)
 
-        
+
     def _pkt_N(self):
         #
         # Notice Response
         #
         print 'Notice:', self.__read_string()
-           
-           
+
+
     def _pkt_P(self):
         #
         # Cursor Response
@@ -405,8 +405,8 @@ class PGClient:
         cursor = self.__read_string()
         #print 'Cursor:', cursor
         self.__result[-1]['rows'] = []
-                    
-                        
+
+
     def _pkt_R(self):
         #
         # Startup Response
@@ -414,20 +414,20 @@ class PGClient:
         code = unpack('!i', self.__read_bytes(4))[0]
         if code == 0:
             self.__authenticated = 1
-            #print 'Authenticated!'            
+            #print 'Authenticated!'
         elif code == 1:
             raise PostgreSQL_Error('Kerberos V4 authentication is required')
-        elif code == 2:            
+        elif code == 2:
             raise PostgreSQL_Error('Kerberos V5 authentication is required')
-        elif code == 3:            
+        elif code == 3:
             self.__send(pack('!i', len(self.__passwd)+5) + self.__passwd + '\0')
-        elif code == 4:            
+        elif code == 4:
             salt = self.__read_bytes(2)
             try:
                 import crypt
             except:
                 raise PostgreSQL_Error('Encrypted authentication is required by PostgreSQL, but Python crypt module not available')
-            cpwd = crypt.crypt(self.__passwd, salt)               
+            cpwd = crypt.crypt(self.__passwd, salt)
             self.__send(pack('!i', len(cpwd)+5) + cpwd + '\0')
         elif code == 5:
             import md5
@@ -438,7 +438,7 @@ class PGClient:
             self.__send(pack('!i', len(m)+4) + m)
         else:
             raise PostgreSQL_Error('Unknown startup response code: R%d (unknown password encryption?)' % code)
-               
+
     def _pkt_T(self):
         #
         # Row Description
@@ -450,9 +450,9 @@ class PGClient:
             oid, type_size, type_modifier = unpack('!ihi', self.__read_bytes(10))
             descr.append((fieldname, oid, type_size, type_modifier))
         self.__field_count = nFields
-        self.__result[-1]['description'] = descr                    
+        self.__result[-1]['description'] = descr
 
-                    
+
     def _pkt_V(self):
         #
         # Function call response
@@ -462,32 +462,32 @@ class PGClient:
             ch = self.__read_bytes(1)
             if ch == '0':
                 break
-            if ch == 'G':                
+            if ch == 'G':
                 result_size = unpack('!i', self.__read_bytes(4))[0]
                 self.__func_result = self.__read_bytes(result_size)
             else:
                 raise PostgreSQL_Error('Unexpected byte: [%s] in Function call reponse' % ch)
-        
-        
+
+
     def _pkt_Z(self):
         #
         # Ready for Query
         #
-        self.__ready = 1  
+        self.__ready = 1
         #print 'Ready for Query'
 
 
     #--------------------------------------
-    # Helper func for _LargeObject 
+    # Helper func for _LargeObject
     #
     def _lo_funcall(self, name, *args):
         return apply(self.funcall, (self.__lo_funcs[name],) + args)
-    
+
 
     #--------------------------------------
     # Public methods
-    #                         
-                
+    #
+
     def close(self):
         self.__del__()
 
@@ -504,10 +504,10 @@ class PGClient:
 
         Othewise, the remaining keyword parameters are based somewhat on the Python DB-ABI and
         will fill in anything not specified in the DSN
-        
+
         """
         #
-        # Come up with a reasonable default host for 
+        # Come up with a reasonable default host for
         # win32 and presumably Unix platforms
         #
         if host == None:
@@ -546,9 +546,9 @@ class PGClient:
         #  (works with PostgreSQL 6.3 or higher?)
         self.__send(pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
         while not self.__ready:
-            self.__read_response()        
-            
-            
+            self.__read_response()
+
+
     def execute(self, str, args=None, debug=DEBUG):
         if args != None:
             na = []
@@ -559,19 +559,19 @@ class PGClient:
                     a = "'" + a.replace('\\', '\\\\').replace("'", "\\'") + "'"
                 na.append(a)
             str = str % tuple(na)
-            
-        if debug:                        
+
+        if debug:
             print 'execute', str
-            
+
         self.__ready = 0
         self.__result = [{}]
-        self.__send('Q'+str+'\0')            
+        self.__send('Q'+str+'\0')
         while not self.__ready:
-            self.__read_response()   
+            self.__read_response()
         result, self.__result = self.__result[:-1], None
         return result
-            
-            
+
+
     def funcall(self, oid, *args):
         """
         Low-level call to PostgreSQL function, you must supply
@@ -589,14 +589,14 @@ class PGClient:
                 self.__send(pack('!ii', 4, arg))
             else:
                 self.__send(pack('!i', len(arg)))
-                self.__send(arg) 
-                                 
+                self.__send(arg)
+
         while not self.__ready:
-            self.__read_response()   
+            self.__read_response()
         result, self.__func_result = self.__func_result, None
-        return result            
-   
-   
+        return result
+
+
     def lo_create(self, mode=INV_READ|INV_WRITE):
         """
         Return the oid of a new Large Object, created with the specified mode
@@ -627,29 +627,29 @@ class PGClient:
         """
         if not self.__lo_funcs:
             self.__lo_init()
-        self.funcall(self.__funcs['lo_unlink'], oid)       
+        self.funcall(self.__funcs['lo_unlink'], oid)
 
 
     def wait_for_notify(self, timeout=-1):
         """
         Wait for an async notification from the backend, which comes
         when another client executes the SQL command:
-        
+
            NOTIFY name
-           
-        where 'name' is an arbitrary string. timeout is specified in 
-        floating- point seconds, -1 means no timeout, 0 means timeout 
-        immediately if nothing is available.  
-        
-        In practice though the timeout is a timeout to wait for the 
-        beginning of a message from the backend. Once a message has 
-        begun, the client will wait for the entire message to finish no 
-        matter how long it takes.        
-        
-        Return value is a tuple: (name, pid) where 'name' string 
-        specified in the NOTIFY command, and 'pid' is the pid of the 
+
+        where 'name' is an arbitrary string. timeout is specified in
+        floating- point seconds, -1 means no timeout, 0 means timeout
+        immediately if nothing is available.
+
+        In practice though the timeout is a timeout to wait for the
+        beginning of a message from the backend. Once a message has
+        begun, the client will wait for the entire message to finish no
+        matter how long it takes.
+
+        Return value is a tuple: (name, pid) where 'name' string
+        specified in the NOTIFY command, and 'pid' is the pid of the
         backend process that processed the command.
-        
+
         Raises an exception on timeout
         """
         while 1:
@@ -659,7 +659,7 @@ class PGClient:
             if self.__wait_response(timeout):
                 self.__read_response()
             else:
-                raise PostgreSQL_Timeout()                
+                raise PostgreSQL_Timeout()
 
 
 def connect(dsn=None, user='', password='', host=None, database='', port=5432, opt=''):
