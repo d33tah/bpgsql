@@ -1055,7 +1055,7 @@ class _Cursor:
         pass
 
 
-    def setoutputsize(size, column=None):
+    def setoutputsize(self, size, column=None):
         """
         Set a column buffer size for fetches of large columns
         (e.g. LONGs, BLOBs, etc.).
