@@ -26,7 +26,8 @@ USE OR PERFORMANCE OF THIS SOFTWARE.
 
 """
 import errno, select, socket, sys, types
-from struct import pack, unpack
+from struct import pack as _pack
+from struct import unpack as _unpack
 
 #
 # Module Globals specified by DB-API 2.0
@@ -207,14 +208,14 @@ class _LargeObject:
 
     def tell(self):
         r = self.__client._lo_funcall('lo_tell', self.__fd)
-        return unpack('!i', r)[0]
+        return _unpack('!i', r)[0]
 
     def write(self, data):
         """
         Write data to lobj, return number of bytes written
         """
         r = self.__client._lo_funcall('lowrite', self.__fd, data)
-        return unpack('!i', r)[0]
+        return _unpack('!i', r)[0]
 
 
 class _ResultSet:
@@ -402,7 +403,7 @@ class _Connection:
         for field_num in range(result.num_fields):
             if null_bits & field_mask:
                 # field has data present, read what was sent
-                field_size = unpack('!i', self.__read_bytes(4))[0]
+                field_size = _unpack('!i', self.__read_bytes(4))[0]
                 if ascii:
                     field_size -= 4
                 data = self.__read_bytes(field_size)
@@ -474,7 +475,7 @@ class _Connection:
         #
         # Notification Response
         #
-        pid = unpack('!i', self.__read_bytes(4))[0]
+        pid = _unpack('!i', self.__read_bytes(4))[0]
         self.__notify_queue.append((self.__read_string(), pid))
 
 
@@ -567,7 +568,7 @@ class _Connection:
         #
         # Backend Key data
         #
-        self.__backend_pid, self.__backend_key = unpack('!ii', self.__read_bytes(8))
+        self.__backend_pid, self.__backend_key = _unpack('!ii', self.__read_bytes(8))
         #print 'Backend Key Data, pid: %d, key: %d' % (self.__backend_pid, self.__backend_key)
 
 
@@ -592,7 +593,7 @@ class _Connection:
         #
         # Startup Response
         #
-        code = unpack('!i', self.__read_bytes(4))[0]
+        code = _unpack('!i', self.__read_bytes(4))[0]
         if code == 0:
             self.__authenticated = 1
             #print 'Authenticated!'
@@ -601,7 +602,7 @@ class _Connection:
         elif code == 2:
             raise InterfaceError('Kerberos V5 authentication is required by server, but not supported by this client')
         elif code == 3:
-            self.__send(pack('!i', len(self.__passwd)+5) + self.__passwd + '\0')
+            self.__send(_pack('!i', len(self.__passwd)+5) + self.__passwd + '\0')
         elif code == 4:
             salt = self.__read_bytes(2)
             try:
@@ -609,14 +610,14 @@ class _Connection:
             except:
                 raise InterfaceError('Encrypted authentication is required by server, but Python crypt module not available')
             cpwd = crypt.crypt(self.__passwd, salt)
-            self.__send(pack('!i', len(cpwd)+5) + cpwd + '\0')
+            self.__send(_pack('!i', len(cpwd)+5) + cpwd + '\0')
         elif code == 5:
             import md5
 
             m = md5.new(self.__passwd + self.__userid).hexdigest()
             m = md5.new(m + self.__read_bytes(4)).hexdigest()
             m = 'md5' + m + '\0'
-            self.__send(pack('!i', len(m)+4) + m)
+            self.__send(_pack('!i', len(m)+4) + m)
         else:
             raise InterfaceError('Unknown startup response code: R%d (unknown password encryption?)' % code)
 
@@ -625,11 +626,11 @@ class _Connection:
         #
         # Row Description
         #
-        nFields = unpack('!h', self.__read_bytes(2))[0]
+        nFields = _unpack('!h', self.__read_bytes(2))[0]
         descr = []
         for i in range(nFields):
             fieldname = self.__read_string()
-            oid, type_size, type_modifier = unpack('!ihi', self.__read_bytes(10))
+            oid, type_size, type_modifier = _unpack('!ihi', self.__read_bytes(10))
             descr.append((fieldname, oid, type_size, type_modifier))
 
         # Save the field description list
@@ -649,7 +650,7 @@ class _Connection:
             if ch == '0':
                 break
             if ch == 'G':
-                result_size = unpack('!i', self.__read_bytes(4))[0]
+                result_size = _unpack('!i', self.__read_bytes(4))[0]
                 self.__func_result = self.__read_bytes(result_size)
             else:
                 raise InterfaceError('Unexpected byte: [%s] in Function call reponse' % ch)
@@ -715,7 +716,7 @@ class _Connection:
         # Send startup packet specifying protocol version 2.0
         #  (works with PostgreSQL 6.3 or higher?)
         #
-        self.__send(pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
+        self.__send(_pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
         while not self.__ready:
             self.__read_response()
 
@@ -822,16 +823,16 @@ class _Connection:
             print 'funcall', funcname, args
 
         self.__ready = 0
-        self.__send(pack('!2sIi', 'F\0', oid, len(args)))
+        self.__send(_pack('!2sIi', 'F\0', oid, len(args)))
         for arg in args:
             atype = type(arg)
             if (atype == types.LongType) and (arg >= 0):
                 # Make sure positive longs, such as OIDs, get sent back as unsigned ints
-                self.__send(pack('!iI', 4, arg))
+                self.__send(_pack('!iI', 4, arg))
             elif (atype == types.IntType) or (atype == types.LongType):
-                self.__send(pack('!ii', 4, arg))
+                self.__send(_pack('!ii', 4, arg))
             else:
-                self.__send(pack('!i', len(arg)))
+                self.__send(_pack('!i', len(arg)))
                 self.__send(arg)
 
         while not self.__ready:
@@ -848,7 +849,7 @@ class _Connection:
         if not self.__lo_funcs:
             self.__lo_init()
         r = self.funcall(self.__lo_funcs['lo_creat'], mode)
-        return unpack('!i', r)[0]
+        return _unpack('!i', r)[0]
 
 
     def lo_open(self, oid, mode=INV_READ|INV_WRITE):
@@ -860,7 +861,7 @@ class _Connection:
         if not self.__lo_funcs:
             self.__lo_init()
         r = self.funcall(self.__lo_funcs['lo_open'], oid, mode)
-        fd = unpack('!i', r)[0]
+        fd = _unpack('!i', r)[0]
         lobj =  _LargeObject(self, fd)
         lobj.seek(0, SEEK_SET)
         return lobj
