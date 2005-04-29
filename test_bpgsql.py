@@ -274,6 +274,41 @@ class BasicTableTests(TableTests):
             self.assertEqual(row[1], 'bar-99')
 
 
+class LargeObjectTests(ConnectedTests):
+        def test_lobj(self):
+            self.cur.execute("BEGIN")
+            loid = self.cnx.lo_create()
+
+            o = self.cnx.lo_open(loid, bpgsql.INV_WRITE)
+            o.write('hello')
+            o.write('world')
+            o.close()
+
+            o = self.cnx.lo_open(loid, bpgsql.INV_READ)
+            s = o.read(4096)
+            self.assertEqual(s, 'helloworld')
+
+            o.seek(5, bpgsql.SEEK_SET)
+            s = o.read(4096)
+            self.assertEqual(s, 'world')
+
+            o.seek(-2, bpgsql.SEEK_END)
+            s = o.read(4096)
+            self.assertEqual(s, 'ld')
+    
+            o.seek(5, bpgsql.SEEK_SET)
+            o.seek(-2, bpgsql.SEEK_CUR)
+            s = o.read(2)
+            self.assertEqual(s, 'lo')
+
+            self.assertEquals(o.tell(), 5)
+
+            o.close()
+
+            self.cnx.lo_unlink(loid)
+            self.cnx.commit()
+
+
 def main():
     all_tests = []
     all_tests.append(unittest.makeSuite(DBAPIInterfaceTests, 'test_'))
@@ -282,6 +317,7 @@ def main():
     all_tests.append(unittest.makeSuite(SelectTests, 'test_'))
     all_tests.append(unittest.makeSuite(CursorTests, 'test_'))
     all_tests.append(unittest.makeSuite(BasicTableTests, 'test_'))
+    all_tests.append(unittest.makeSuite(LargeObjectTests, 'test_'))
 
     suite = unittest.TestSuite(all_tests)
 

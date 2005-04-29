@@ -874,7 +874,7 @@ class _Connection:
         """
         if not self.__lo_funcs:
             self.__lo_init()
-        self.funcall(self.__funcs['lo_unlink'], oid)
+        self.funcall(self.__lo_funcs['lo_unlink'], oid)
 
 
     def rollback(self):
