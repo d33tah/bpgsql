@@ -807,7 +807,7 @@ class Connection:
         Get a new cursor object using this connection.
 
         """
-        return _Cursor(self)
+        return Cursor(self)
 
 
     def funcall(self, oid, *args):
@@ -918,7 +918,7 @@ class Connection:
                 raise PostgreSQL_Timeout()
 
 
-class _Cursor:
+class Cursor:
     """
     Cursor objects are created by calling a connection's cursor() method,
     and are used to manage the context of a fetch operation.
@@ -931,6 +931,10 @@ class _Cursor:
 
     """
     def __init__(self, conn):
+        """
+        Create a cursor from a given bpgsql Connection object.
+
+        """
         self.arraysize = 1
         self.connection = conn
         self.description = None
