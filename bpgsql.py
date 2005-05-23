@@ -250,12 +250,12 @@ def _identity(d):
     return d
 
 
-class _Connection:
+class Connection:
     """
     connection objects are created by calling this module's connect function.
 
     """
-    def __init__(self):
+    def __init__(self, dsn=None, username='', password='', host=None, dbname='', port='', opt=''):
         self.__backend_pid = None
         self.__backend_key = None
         self.__socket = None
@@ -270,6 +270,68 @@ class _Connection:
         self.__lo_funcnames = {}
         self.__type_oid_name = {}         # map of Pgsql type-oids to Pgsql type-names
         self.__type_oid_conversion = {}   # map of Pgsql type-oids to Python conversion_functions
+
+        #
+        # Come up with a reasonable default host for
+        # win32 and presumably Unix platforms
+        #
+        if host == None:
+            if sys.platform == 'win32':
+                host = '127.0.0.1'
+            else:
+                host = '/tmp/.s.PGSQL.5432'
+
+        args = _parseDSN(dsn)
+
+        if not args.has_key('host'):
+            args['host'] = host
+        if not args.has_key('port'):
+            args['port'] = port or 5432
+        if not args.has_key('dbname'):
+            args['dbname'] = dbname
+        if not args.has_key('user'):
+            args['user'] = username
+        if not args.has_key('password'):
+            args['password'] = password
+        if not args.has_key('options'):
+            args['options'] = opt
+
+        if args['host'].startswith('/'):
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.connect(args['host'])
+        else:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((args['host'], int(args['port'])))
+
+        if not args['user']:
+            #
+            # If no userid specified in the args, try to use the userid
+            # this process is running under, if we can figure that out.
+            #
+            try:
+                import os, pwd
+                args['user'] = pwd.getpwuid(os.getuid())[0]
+            except:
+                pass
+
+        self.__socket = s
+        self.__passwd = args['password']
+        self.__userid = args['user']
+
+        #
+        # Send startup packet specifying protocol version 2.0
+        #  (works with PostgreSQL 6.3 or higher?)
+        #
+        self.__send(_pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
+        while not self.__ready:
+            self.__read_response()
+
+        #
+        # Get type info from the backend to help put together some dictionaries
+        # to help in converting Pgsql types to Python types.
+        #
+        self.__initialize_type_map()
+
 
     def __del__(self):
         if self.__socket:
@@ -662,69 +724,6 @@ class _Connection:
         #
         self.__ready = 1
         #print 'Ready for Query'
-
-
-    def _connect(self, dsn=None, username='', password='', host=None, dbname='', port='', opt=''):
-        #
-        # Come up with a reasonable default host for
-        # win32 and presumably Unix platforms
-        #
-        if host == None:
-            if sys.platform == 'win32':
-                host = '127.0.0.1'
-            else:
-                host = '/tmp/.s.PGSQL.5432'
-
-        args = _parseDSN(dsn)
-
-        if not args.has_key('host'):
-            args['host'] = host
-        if not args.has_key('port'):
-            args['port'] = port or 5432
-        if not args.has_key('dbname'):
-            args['dbname'] = dbname
-        if not args.has_key('user'):
-            args['user'] = username
-        if not args.has_key('password'):
-            args['password'] = password
-        if not args.has_key('options'):
-            args['options'] = opt
-
-        if args['host'].startswith('/'):
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.connect(args['host'])
-        else:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((args['host'], int(args['port'])))
-
-        if not args['user']:
-            #
-            # If no userid specified in the args, try to use the userid
-            # this process is running under, if we can figure that out.
-            #
-            try:
-                import os, pwd
-                args['user'] = pwd.getpwuid(os.getuid())[0]
-            except:
-                pass
-
-        self.__socket = s
-        self.__passwd = args['password']
-        self.__userid = args['user']
-
-        #
-        # Send startup packet specifying protocol version 2.0
-        #  (works with PostgreSQL 6.3 or higher?)
-        #
-        self.__send(_pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
-        while not self.__ready:
-            self.__read_response()
-
-        #
-        # Get type info from the backend to help put together some dictionaries
-        # to help in converting Pgsql types to Python types.
-        #
-        self.__initialize_type_map()
 
 
     #--------------------------------------
@@ -1123,8 +1122,6 @@ def connect(dsn=None, username='', password='', host=None, dbname='', port='', o
           cnx = bpgsql.connect("host=127.0.0.1 dbname=mydb user=jake")
 
     """
-    pg = _Connection()
-    pg._connect(dsn, username, password, host, dbname, port, opt)
-    return pg
+    return Connection(dsn, username, password, host, dbname, port, opt)
 
 # ---- EOF ----
