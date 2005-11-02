@@ -79,6 +79,18 @@ class PostgreSQL_Timeout(InterfaceError):
     pass
 
 
+def _bool_convert(s):
+    """
+    Convert PgSQL boolean string to Python boolean
+
+    """
+    if s == 't':
+        return True
+    if s == 'f':
+        return False
+    raise InterfaceError('Boolean type came across as unknown value [%s]' % s)
+
+
 #
 # Map of Pgsql type-names to Python conversion-functions.
 #
@@ -89,7 +101,9 @@ class PostgreSQL_Timeout(InterfaceError):
 # PostgreSQL types not listed here stay represented as plain
 # strings in result rows.
 #
-PGSQL_TO_PYTHON_TYPES = {   'float4': float,
+PGSQL_TO_PYTHON_TYPES = {   
+                            'bool': _bool_convert,
+                            'float4': float,
                             'float8': float,
                             'int2': int,
                             'int4': int,

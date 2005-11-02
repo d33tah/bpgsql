@@ -109,12 +109,13 @@ class InternalDSNParserTests(unittest.TestCase):
 
 
 class TypeTests(ConnectedTests):
-    def test_integer(self):
-        self.cur.execute("SELECT -273")
-        self.assertEqual(self.cur.rowcount, 1)
+    def test_boolean(self):
+        self.cur.execute("SELECT True")
         row = self.cur.fetchone()
-        self.assertEqual(len(row), 1)
-        self.assertEqual(row[0], -273)
+        self.assertEqual(row[0], True)
+        self.cur.execute("SELECT False")
+        row = self.cur.fetchone()
+        self.assertEqual(row[0], False)
 
     def test_float(self):
         self.cur.execute("SELECT sin(0) - 0.5")
@@ -122,6 +123,13 @@ class TypeTests(ConnectedTests):
         row = self.cur.fetchone()
         self.assertEqual(len(row), 1)
         self.assertEqual(row[0], -0.5)
+
+    def test_integer(self):
+        self.cur.execute("SELECT -273")
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], -273)
 
     def test_long(self):
         self.cur.execute("SELECT trunc(pow(2,40))")
