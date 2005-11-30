@@ -139,13 +139,13 @@ class TypeTests(ConnectedTests):
         self.assertEqual(row[0], 2**40)
 
     def test_multiple(self):
-        self.cur.execute("SELECT -7.5, 'hello world', 25345234526565445623, 891")
+        self.cur.execute("SELECT -7.5, 'hello world', 253452345265654456, 891")
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
         self.assertEqual(len(row), 4)
         self.assertEqual(row[0], -7.5)
         self.assertEqual(row[1], 'hello world')
-        self.assertEqual(row[2], 25345234526565445623)
+        self.assertEqual(row[2], 253452345265654456)
         self.assertEqual(row[3], 891)
 
     def test_numeric(self):
