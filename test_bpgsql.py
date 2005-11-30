@@ -163,6 +163,44 @@ class TypeTests(ConnectedTests):
         self.assertEqual(row[0], 'foo')
 
 
+    def test_unicode(self):
+        #
+        # Unicode command
+        #
+        self.cur.execute(u"SELECT 'Hello\u1234World!'")
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], u'Hello\u1234World!')
+
+        #
+        # String command with unicode arg
+        #
+        self.cur.execute('SELECT %s', (u'Hello\u1234World!',))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], u'Hello\u1234World!')
+
+        #
+        # Unicode command with string arg
+        #
+        self.cur.execute(u'SELECT %s', ('Hello World!',))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], 'Hello World!')
+
+        #
+        # Unicode command with unicode arg
+        #
+        self.cur.execute(u'SELECT %s', (u'Hello\u1234World!',))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], u'Hello\u1234World!')
+
+
 class SelectTests(ConnectedTests):
     def test_description(self):
         self.cur.execute("SELECT oid, typname, typlen, typtype  from pg_type")

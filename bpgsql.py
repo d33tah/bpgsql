@@ -1,7 +1,7 @@
 """
 Barebones PostgreSQL
 
-Copyright 2001-2004 by Barry Pederson <bp@barryp.org>
+Copyright 2001-2005 by Barry Pederson <bp@barryp.org>
 All rights reserved.
 
 Permission to use, copy, modify, and distribute this software and its
@@ -23,6 +23,8 @@ USE OR PERFORMANCE OF THIS SOFTWARE.
     2001-10-28  Started
     2002-04-06  Changed connect args to be more like the Python DB-API
     2004-03-27  Reworked to follow DB-API 2.0 (http://www.python.org/peps/pep-0249.html)
+    2005-11-30  Added Unicode support - all char-type fields are now returned as Python Unicode
+                strings, and SQL commands may be in Unicode or include Unicode parameters.
 
 """
 import errno, select, socket, sys, types
@@ -91,6 +93,14 @@ def _bool_convert(s):
     raise InterfaceError('Boolean type came across as unknown value [%s]' % s)
 
 
+def _char_convert(s):
+    """
+    Convert character data, which should be utf-8 strings, to Python Unicode strings
+
+    """
+    return s.decode('utf-8')
+
+
 #
 # Map of Pgsql type-names to Python conversion-functions.
 #
@@ -103,13 +113,17 @@ def _bool_convert(s):
 #
 PGSQL_TO_PYTHON_TYPES = {   
                             'bool': _bool_convert,
+                            'char': _char_convert,
                             'float4': float,
                             'float8': float,
                             'int2': int,
                             'int4': int,
                             'int8': long,
                             'oid' : long,
-                            'numeric': float        #Should be some kind of decimal?
+                            'numeric': float,        #Should be some kind of decimal?
+                            'text': _char_convert,
+                            'unknown': _char_convert,
+                            'varchar': _char_convert,
                             }
 
 #
@@ -183,7 +197,7 @@ def _fix_arg(a):
     #
     if a is  None:
         return 'NULL'
-    if type(a) == types.StringType:
+    if type(a) in types.StringTypes:
         return "'%s'" % a.replace('\\', '\\\\').replace("'", "\\'")
     return a
 
@@ -361,6 +375,8 @@ class Connection:
         with a map of type_oid -> conversion_function
         """
         cur = self.cursor()
+        cur.execute("SET CLIENT_ENCODING to 'UNICODE'")
+
         cur.execute('SELECT oid, typname FROM pg_type')
 
         # Make a dictionary of type oids to type names
@@ -765,6 +781,9 @@ class Connection:
             else:
                 # replace pyformat markers with dictionary parameters
                 cmd = cmd % dict([(k, _fix_arg(v)) for k,v in args.items()])
+
+        if type(cmd) == types.UnicodeType:
+            cmd = cmd.encode('utf-8')
 
         self.__ready = 0
         self.__result = None
