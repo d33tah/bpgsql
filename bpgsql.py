@@ -27,7 +27,12 @@ USE OR PERFORMANCE OF THIS SOFTWARE.
                 strings, and SQL commands may be in Unicode or include Unicode parameters.
 
 """
-import errno, select, socket, sys, types
+import errno
+import exceptions
+import select
+import socket
+import sys
+import types
 from struct import pack as _pack
 from struct import unpack as _unpack
 
@@ -41,7 +46,6 @@ paramstyle = 'pyformat'   # we also understand plain-format
 #
 # Exception hierarchy from DB-API 2.0 spec
 #
-import exceptions
 class Error(exceptions.StandardError):
     pass
 
@@ -111,7 +115,7 @@ def _char_convert(s):
 # PostgreSQL types not listed here stay represented as plain
 # strings in result rows.
 #
-PGSQL_TO_PYTHON_TYPES = {   
+PGSQL_TO_PYTHON_TYPES = {
                             'bool': _bool_convert,
                             'char': _char_convert,
                             'float4': float,
