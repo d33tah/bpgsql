@@ -1,32 +1,23 @@
 """
 Barebones PostgreSQL
 
-Copyright 2001-2005 by Barry Pederson <bp@barryp.org>
-All rights reserved.
-
-Permission to use, copy, modify, and distribute this software and its
-documentation for any purpose and without fee is hereby granted,
-provided that the above copyright notice appear in all copies and that
-both that copyright notice and this permission notice appear in
-supporting documentation, and that the copyright owner's name not be
-used in advertising or publicity pertaining to distribution of the
-software without specific, written prior permission.
-
-THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
-INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN
-NO EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
-CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
-OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE
-USE OR PERFORMANCE OF THIS SOFTWARE.
-
-    2001-10-28  Started
-    2002-04-06  Changed connect args to be more like the Python DB-API
-    2004-03-27  Reworked to follow DB-API 2.0 (http://www.python.org/peps/pep-0249.html)
-    2005-11-30  Added Unicode support - all char-type fields are now returned as Python Unicode
-                strings, and SQL commands may be in Unicode or include Unicode parameters.
-
 """
+# Copyright (C) 2001-2008 Barry Pederson <bp@barryp.org>
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
+
 import errno
 import exceptions
 import select

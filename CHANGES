@@ -12,3 +12,12 @@ Version 1.2
 Version 1.1
 
     Initial released version
+
+
+------
+
+2001-10-28  Started
+2002-04-06  Changed connect args to be more like the Python DB-API
+2004-03-27  Reworked to follow DB-API 2.0 (http://www.python.org/peps/pep-0249.html)
+2005-11-30  Added Unicode support - all char-type fields are now returned as Python Unicode
+	    strings, and SQL commands may be in Unicode or include Unicode parameters.
