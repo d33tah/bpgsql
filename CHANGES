@@ -1,0 +1,14 @@
+CHANGES
+--------
+
+In development
+
+    Unicode support
+
+Version 1.2
+
+    Rework to be close to DB-API 2.0 compliant
+
+Version 1.1
+
+    Initial released version
