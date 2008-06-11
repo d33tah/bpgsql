@@ -171,11 +171,14 @@ class TypeTests(ConnectedTests):
         self.assertEqual(row[3], 891)
 
     def test_numeric(self):
-        self.cur.execute("SELECT 1.5")
+        d = Decimal('3.14159')
+        self.cur.execute("SELECT 1.5, %s", (d,))
+        print self.cur.query
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
-        self.assertEqual(len(row), 1)
+        self.assertEqual(len(row), 2)
         self.assertEqual(row[0], Decimal('1.5'))
+        self.assertEqual(row[1], d)
 
     def test_string(self):
         self.cur.execute("SELECT 'foo'")
