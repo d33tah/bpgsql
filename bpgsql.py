@@ -123,30 +123,97 @@ def _char_convert(s):
     return s.decode('utf-8')
 
 
-#
-# Map of Pgsql type-names to Python conversion-functions.
-#
-# The value associated with each key must be a callable Python
-# object that takes a string as a parameter, and returns another
-# Python object.
-#
-# PostgreSQL types not listed here stay represented as plain
-# strings in result rows.
-#
-PGSQL_TO_PYTHON_TYPES = {
-                            'bool': (_bool_convert, 'bool'),
-                            'char': (_char_convert, STRING),
-                            'float4': (float, NUMBER),
-                            'float8': (float, NUMBER),
-                            'int2': (int, NUMBER),
-                            'int4': (int, NUMBER),
-                            'int8': (long, NUMBER),
-                            'oid' : (long, NUMBER),
-                            'numeric': (float, NUMBER),        #Should be some kind of decimal?
-                            'text': (_char_convert, STRING),
-                            'unknown': (_char_convert, BINARY),
-                            'varchar': (_char_convert, STRING),
-                            }
+def _identity(d):
+    """
+    Identity function, returns whatever was passed to it,
+    used when we have a PostgreSQL type for which we don't
+    have a function to convert from a PostgreSQL string
+    representation to a Python object - so the item
+    basically remains a string.
+    """
+    return d
+
+
+class _PgType(object):
+    def __init__(self, name, converter, type_id):
+        self.name = name
+        self.converter = converter
+        self.type_id = type_id
+        self.oid = None
+
+_DEFAULT_PGTYPE = _PgType('unknown', _char_convert, 'unknown')
+
+class _TypeManager(object):
+    """
+    Helper class to manage mapping between Python
+    and PostgreSQL types.
+
+    """
+    def __init__(self):
+        self.pg_types = {}
+        self.oid_map = {}
+
+    def _clone(self):
+        """
+        Helper method to do a partial clone to give Connection
+        objects something to start with.
+
+        """
+        result = _TypeManager()
+        result.pg_types = self.pg_types.copy()
+        return result
+
+
+    def get_conversion(self, oid):
+        return self.oid_map.get(oid, _DEFAULT_PGTYPE).converter
+
+
+    def get_type(self, oid):
+        return self.oid_map.get(oid, _DEFAULT_PGTYPE)
+
+
+    def register_pgsql(self, typenames, converter, type_id):
+        if type(typenames) in types.StringTypes:
+            typenames = [typenames]
+
+        for name in typenames:
+            #
+            # See if we've already done 'register_oid' on this name
+            #
+            if name in self.pg_types:
+                oid = self.pg_types[name].oid
+            else:
+                oid = None
+
+            self.pg_types[name] = pg_type = _PgType(name, converter, type_id)
+
+            #
+            # Update oid_map if we already did register_oid on this name
+            #
+            if oid is not None:
+                self.oid_map[oid] = pg_type
+
+
+    def register_oid(self, oid, name):
+        if name in self.pg_types:
+            pg_type = self.pg_types[name]
+        else:
+            self.pg_types[name] = pg_type = _PgType(name, _char_convert, 'unknown')
+
+        pg_type.oid = oid
+        self.oid_map[oid] = pg_type
+
+
+DEFAULT_TYPE_MANAGER = _TypeManager()
+
+DEFAULT_TYPE_MANAGER.register_pgsql(['char', 'varchar', 'text'], _char_convert, STRING)
+DEFAULT_TYPE_MANAGER.register_pgsql('bytea', _identity, BINARY)
+DEFAULT_TYPE_MANAGER.register_pgsql(['int2', 'int4'], int, NUMBER)
+DEFAULT_TYPE_MANAGER.register_pgsql('int8', long, NUMBER)
+DEFAULT_TYPE_MANAGER.register_pgsql(['float4', 'float8'], float, NUMBER)
+DEFAULT_TYPE_MANAGER.register_pgsql('oid', long, ROWID)
+DEFAULT_TYPE_MANAGER.register_pgsql('bool', _bool_convert, 'bool')
+
 
 #
 # Constants relating to Large Object support
@@ -282,22 +349,18 @@ class _ResultSet:
         self.messages = []
 
 
-    def set_description(self, desc_list):
-        self.description = desc_list
+    def set_description(self, desc_list, type_manager):
         self.num_fields = len(desc_list)
+
+        self.description = []
+        for name, oid, size, modifier in desc_list:
+            pg_type = type_manager.get_type(oid)
+            self.description.append((name, pg_type.type_id, None, None, None, None, None))
+
         self.null_byte_count = (self.num_fields + 7) >> 3
         self.rows = []
 
 
-def _identity(d):
-    """
-    Identity function, returns whatever was passed to it,
-    used when we have a PostgreSQL type for which we don't
-    have a function to convert from a PostgreSQL string
-    representation to a Python object - so the item
-    basically remains a string.
-    """
-    return d
 
 
 class Connection:
@@ -318,9 +381,7 @@ class Connection:
         self.__func_result = None
         self.__lo_funcs = {}
         self.__lo_funcnames = {}
-        self.__type_oid_name = {}         # map of Pgsql type-oids to Pgsql type-names
-        self.__type_oid_conversion = {}   # map of Pgsql type-oids to Python conversion_functions
-        self.__type_oid_id = {}           # map of Pgsql type-oids to DB-API type identifiers
+        self.type_manager = DEFAULT_TYPE_MANAGER._clone()
 
         #
         # Come up with a reasonable default host for
@@ -402,15 +463,8 @@ class Connection:
 
         cur.execute('SELECT oid, typname FROM pg_type')
 
-        # Make a dictionary of type oids to type names
-        self.__type_oid_name = dict([(int(x[0]), x[1]) for x in cur])
-
-        # Make a dictionary of type oids to type identifiers
-        self.__type_oid_id = dict([(x[0], PGSQL_TO_PYTHON_TYPES.get(x[1], (None, 'unknown'))[1]) for x in self.__type_oid_name.items()])
-
-        # Fill a dictionary of type oids to conversion functions
-        for oid, typename in self.__type_oid_name.items():
-            self.__type_oid_conversion[oid] = PGSQL_TO_PYTHON_TYPES.get(typename, (_identity, None))[0]
+        for oid, name in cur:
+            self.type_manager.register_oid(int(oid), name)
 
 
     def __lo_init(self):
@@ -746,10 +800,10 @@ class Connection:
             descr.append((fieldname, oid, type_size, type_modifier))
 
         # Save the field description list
-        self.__current_result.set_description(descr)
+        self.__current_result.set_description(descr, self.type_manager)
 
         # build a list of field conversion functions we can use against each row
-        self.__current_result.conversion = [self.__type_oid_conversion.get(d[1], _identity) for d in descr]
+        self.__current_result.conversion = [self.type_manager.get_conversion(d[1]) for d in descr]
 
 
     def _pkt_V(self):
@@ -822,11 +876,7 @@ class Connection:
         if result.error:
             raise DatabaseError, result.error
 
-        # Convert Pgsql row descriptions to DB-API 2.0 row descriptions, somewhat... ###FIXME###
-        descr = result.description
-        if descr:
-            descr = [(x[0], self.__type_oid_id.get(x[1], '???'), None, None, None, None, None) for x in descr]
-        return descr, result.rows, result.messages, expanded_cmd
+        return result.description, result.rows, result.messages, expanded_cmd
 
 
 
