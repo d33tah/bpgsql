@@ -1,6 +1,46 @@
 Extensions to DB-API 2.0
 ------------------------
 
+Connection objects have a 'type_manager' attribute which is a class
+with which you can register conversion functions to translate PgSQL values
+to Python values or vice versa.
+
+Connections are preloaded with common conversion functions, but they can
+be added to with these methods
+
+    register_pgsql(pg_type_name, callable, type_id)
+        Where 'pg_type_name' is a string or list of strings indicating
+        pgsql type names, callable is a Python callable that takes
+        a string as an argument and returns some Python value, and type_id
+        is a value to be returned in a row descriptor - such as BINARY
+
+    register_python(python_class, callable)
+        Where python_class is a python class, and callable is a
+        Python callable that takes values of the specified class
+        and returns a string ready for insertion into an SQL statement,
+        doing any quoting or escaping if required.
+
+    Example:
+        class Point(object):
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+
+        def pg_point(obj):
+            # Convert a Python Point object to a string representing
+            # a pgsql 'point' value
+            return "'(%s, %s)'::point" % (self.x, self.y)
+
+        def python_point(s):
+            # Convert a string holding a pgsql 'point' value to a
+            # Python Point object
+            m = re.match(r'\((.*?),\s*(.*?)\)', s)
+            return Point(float(m.group(1)), float(m.group(2)))
+
+        myconn.type_manager.register_pgsql('point', python_point, 'my_point_id')
+        myconn.type_manager.register_python(Point, pg_point)
+
+
 Cursor objects have a '.query' attribute, which is a string containing
 the last command executed after arguments have been expanded, and is exactly
 what was sent to the server. (Inspired by psycopg2).

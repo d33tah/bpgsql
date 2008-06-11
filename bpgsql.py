@@ -307,18 +307,27 @@ class _TypeManager(object):
 
 DEFAULT_TYPE_MANAGER = _TypeManager()
 
+#
+## Map PgSQL -> Python
+#
 DEFAULT_TYPE_MANAGER.register_pgsql(['char', 'varchar', 'text'], _char_convert, STRING)
 DEFAULT_TYPE_MANAGER.register_pgsql('bytea', _identity, BINARY)
+
 DEFAULT_TYPE_MANAGER.register_pgsql(['int2', 'int4'], int, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('int8', long, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql(['float4', 'float8'], float, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('numeric', Decimal, NUMBER)
+
 DEFAULT_TYPE_MANAGER.register_pgsql('oid', long, ROWID)
 DEFAULT_TYPE_MANAGER.register_pgsql('bool', _bool_convert, 'bool')
+
 DEFAULT_TYPE_MANAGER.register_pgsql('date', _date_convert, DATETIME)
 DEFAULT_TYPE_MANAGER.register_pgsql(['time', 'timetz'], _time_convert, DATETIME)
 DEFAULT_TYPE_MANAGER.register_pgsql(['timestamp', 'timestamptz'], _timestamp_convert, DATETIME)
 
+#
+## Map Python -> PgSQL
+#
 DEFAULT_TYPE_MANAGER.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
 DEFAULT_TYPE_MANAGER.register_python(datetime.datetime, _convert_datetime)
 DEFAULT_TYPE_MANAGER.register_python(datetime.time, _convert_time)

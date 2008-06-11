@@ -5,6 +5,16 @@ In development
 
     Unicode support
 
+    Rework code that maps between Python classes and PgSQL types, made
+    more flexible and customizable on a per-connection basis.
+
+    Map between these Python and PgSQL types
+
+        Decimal             <--->   numeric
+        datetime.date       <--->   date
+        datetime.time       <--->   time or 'time with time zone'
+        datetime.datetime   <--->   timestamp or 'timestamp with time zone'
+
 Version 1.2
 
     Rework to be close to DB-API 2.0 compliant
