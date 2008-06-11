@@ -1,5 +1,5 @@
 """
-Barebones PostgreSQL
+Barebones pure-python PostGreSQL
 
 """
 # Copyright (C) 2001-2008 Barry Pederson <bp@barryp.org>
@@ -418,7 +418,7 @@ class Connection:
         # Make up a dictionary mapping function names beginning with "lo" to function oids
         # (there may be some non-lobject functions in there, but that should be harmless)
         #
-        descr, rows, msgs = self._execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")
+        descr, rows, msgs, cmd = self._execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")
         for proname, oid in rows:
             self.__lo_funcs[proname] = oid
             self.__lo_funcnames[oid] = proname
@@ -802,8 +802,11 @@ class Connection:
                 # replace pyformat markers with dictionary parameters
                 cmd = cmd % dict([(k, _fix_arg(v)) for k,v in args.items()])
 
+        expanded_cmd = cmd
         if type(cmd) == types.UnicodeType:
             cmd = cmd.encode('utf-8')
+
+        BPGSQL_LOGGER.debug('EXECUTE:' + expanded_cmd)
 
         self.__ready = 0
         self.__result = None
@@ -823,7 +826,7 @@ class Connection:
         descr = result.description
         if descr:
             descr = [(x[0], self.__type_oid_id.get(x[1], '???'), None, None, None, None, None) for x in descr]
-        return descr, result.rows, result.messages
+        return descr, result.rows, result.messages, expanded_cmd
 
 
 
@@ -1013,6 +1016,7 @@ class Cursor:
         self.rowcount = -1
         self.rownumber = None
         self.__rows = None
+        self.query = ''
 
 
     def __iter__(self):
@@ -1049,7 +1053,7 @@ class Cursor:
         self.__rows = None
         self.messages = []
 
-        self.description, self.__rows, self.messages = self.connection._execute(cmd, args)
+        self.description, self.__rows, self.messages, self.query = self.connection._execute(cmd, args)
 
         if self.__rows is not None:
             self.rowcount = len(self.__rows)

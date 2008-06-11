@@ -1,0 +1,6 @@
+Extensions to DB-API 2.0
+------------------------
+
+Cursor objects have a '.query' attribute, which is a string containing
+the last command executed after arguments have been expanded, and is exactly
+what was sent to the server. (Inspired by psycopg2).
