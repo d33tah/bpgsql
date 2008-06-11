@@ -6,7 +6,7 @@ BPgSQL unittests
 
 """
 import unittest
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from optparse import OptionParser
 import bpgsql
@@ -132,6 +132,27 @@ class TypeTests(ConnectedTests):
         self.assertEqual(row[0], date(2008, 6, 11))
         self.assertEqual(row[1], d1)
         self.assertEqual(row[2], d2)
+
+    def test_datetime(self):
+        d1 = datetime.now()
+        d2 = datetime(2008, 12, 31, 15, 21, 17)
+        self.cur.execute("SELECT %s, %s, now()", (d1, d2))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 3)
+        self.assertEqual(row[0], d1)
+        self.assertEqual(row[1], d2)
+        self.assertEqual(type(row[2]), datetime)
+        #
+        # PgSQL now() should have a timezone attached, check
+        # if that survives a roundtrip
+        #
+        pgsql_now = row[2]
+        self.cur.execute("SELECT %s", (pgsql_now,))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], pgsql_now)
 
     def test_float(self):
         self.cur.execute("SELECT sin(0) - 0.5")

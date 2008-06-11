@@ -133,6 +133,50 @@ def _date_convert(s):
     return datetime.date(int(y), int(m), int(d))
 
 
+class _SimpleTzInfo(datetime.tzinfo):
+    def __init__(self, tz):
+        super(_SimpleTzInfo, self).__init__()
+        if ':' in tz:
+            hour, minute = tz.split(':')
+        else:
+            hour = tz
+            minute = 0
+        hour = int(hour)
+        if hour < 0:
+            minute = -minute
+        self.offset = datetime.timedelta(hours=hour, minutes=minute)
+
+    def utcoffset(self, dt):
+        return self.offset
+
+
+def _timestamp_convert(s):
+    """
+    Convert timestamp string to Python datetime.datetime object
+
+    """
+    datepart, timepart = s.split(' ')
+    if '+' in timepart:
+        timepart, tz = timepart.split('+')
+        tz = _SimpleTzInfo(tz)
+    elif '-' in timepart:
+        timepart, tz = timepart.split('-')
+        tz = _SimpleTzInfo('-' + tz)
+    else:
+        tz = None
+
+    y, m, d = datepart.split('-')
+    h, mi, s = timepart.split(':')
+    if '.' in s:
+        s, frac = s.split('.')
+        frac = int(Decimal('0.' + frac) * 1000000)
+    else:
+        frac = 0
+
+
+    return datetime.datetime(int(y), int(m), int(d), int(h), int(mi), int(s), frac, tz)
+
+
 def _identity(d):
     """
     Identity function, returns whatever was passed to it,
@@ -142,6 +186,15 @@ def _identity(d):
     basically remains a string.
     """
     return d
+
+
+def _convert_datetime(dt):
+    """
+    Convert Python datetime.datetime to pgsql
+    """
+    if dt.tzinfo:
+        return "'%s'::timestamp with time zone" % dt.isoformat(' ')
+    return "'%s'::timestamp" % dt.isoformat(' ')
 
 
 class _PgType(object):
@@ -224,7 +277,7 @@ class _TypeManager(object):
         if name in self.pg_types:
             pg_type = self.pg_types[name]
         else:
-            self.pg_types[name] = pg_type = _PgType(name, _char_convert, 'unknown')
+            self.pg_types[name] = pg_type = _PgType(name, _char_convert, 'oid:%d:%s' % (oid, name))
 
         pg_type.oid = oid
         self.oid_map[oid] = pg_type
@@ -245,8 +298,10 @@ DEFAULT_TYPE_MANAGER.register_pgsql('numeric', Decimal, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('oid', long, ROWID)
 DEFAULT_TYPE_MANAGER.register_pgsql('bool', _bool_convert, 'bool')
 DEFAULT_TYPE_MANAGER.register_pgsql('date', _date_convert, DATETIME)
+DEFAULT_TYPE_MANAGER.register_pgsql(['timestamp', 'timestamptz'], _timestamp_convert, DATETIME)
 
 DEFAULT_TYPE_MANAGER.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
+DEFAULT_TYPE_MANAGER.register_python(datetime.datetime, _convert_datetime)
 
 
 #
