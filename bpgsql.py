@@ -149,6 +149,7 @@ class _SimpleTzInfo(datetime.tzinfo):
     def utcoffset(self, dt):
         return self.offset
 
+
 def _time_convert(timepart):
     """
     Convert time string to Python datetime.time object
@@ -180,24 +181,9 @@ def _timestamp_convert(s):
 
     """
     datepart, timepart = s.split(' ')
-    if '+' in timepart:
-        timepart, tz = timepart.split('+')
-        tz = _SimpleTzInfo(tz)
-    elif '-' in timepart:
-        timepart, tz = timepart.split('-')
-        tz = _SimpleTzInfo('-' + tz)
-    else:
-        tz = None
-
-    y, m, d = datepart.split('-')
-    h, mi, s = timepart.split(':')
-    if '.' in s:
-        s, frac = s.split('.')
-        frac = int(Decimal('0.' + frac) * 1000000)
-    else:
-        frac = 0
-
-    return datetime.datetime(int(y), int(m), int(d), int(h), int(mi), int(s), frac, tz)
+    d = _date_convert(datepart)
+    t = _time_convert(timepart)
+    return datetime.datetime(d.year, d.month, d.day, t.hour, t.minute, t.second, t.microsecond, t.tzinfo)
 
 
 def _identity(d):
