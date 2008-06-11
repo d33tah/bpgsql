@@ -26,6 +26,7 @@ import select
 import socket
 import sys
 import types
+from decimal import Decimal
 from struct import pack as _pack
 from struct import unpack as _unpack
 
@@ -211,6 +212,7 @@ DEFAULT_TYPE_MANAGER.register_pgsql('bytea', _identity, BINARY)
 DEFAULT_TYPE_MANAGER.register_pgsql(['int2', 'int4'], int, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('int8', long, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql(['float4', 'float8'], float, NUMBER)
+DEFAULT_TYPE_MANAGER.register_pgsql('numeric', Decimal, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('oid', long, ROWID)
 DEFAULT_TYPE_MANAGER.register_pgsql('bool', _bool_convert, 'bool')
 

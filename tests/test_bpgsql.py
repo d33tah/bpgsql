@@ -6,6 +6,7 @@ BPgSQL unittests
 
 """
 import unittest
+from decimal import Decimal
 from optparse import OptionParser
 import bpgsql
 
@@ -146,7 +147,7 @@ class TypeTests(ConnectedTests):
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
         self.assertEqual(len(row), 4)
-        self.assertEqual(row[0], -7.5)
+        self.assertEqual(row[0], Decimal('-7.5'))
         self.assertEqual(row[1], 'hello world')
         self.assertEqual(row[2], 253452345265654456)
         self.assertEqual(row[3], 891)
@@ -156,7 +157,7 @@ class TypeTests(ConnectedTests):
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
         self.assertEqual(len(row), 1)
-        self.assertEqual(row[0], 1.5)
+        self.assertEqual(row[0], Decimal('1.5'))
 
     def test_string(self):
         self.cur.execute("SELECT 'foo'")
