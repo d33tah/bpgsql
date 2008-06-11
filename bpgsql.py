@@ -18,6 +18,7 @@ Barebones PostgreSQL
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
 
+import datetime
 import errno
 import exceptions
 import select
@@ -33,6 +34,31 @@ from struct import unpack as _unpack
 apilevel = '2.0'
 threadsafety = 1          # Threads may share the module, but not connections.
 paramstyle = 'pyformat'   # we also understand plain-format
+
+#
+# Constructors specified by DB-API 2.0
+#
+Date = datetime.date
+Time = datetime.time
+Timestamp = datetime.datetime
+DateFromTicks = datetime.date.fromtimestamp
+
+def TimeFromTicks(t):
+    dt = datetime.datetime.fromtimestamp(t)
+    return datetime.time(dt.hour, dt.minute, dt.second)
+
+TimestampFromTicks = datetime.datetime.fromtimestamp
+Binary = lambda x: x
+
+
+#
+# Type identifiers specified by DB-API 2.0
+#
+STRING = object()
+BINARY = object()
+NUMBER = object()
+DATETIME = object()
+ROWID = object()
 
 #
 # Exception hierarchy from DB-API 2.0 spec
@@ -107,18 +133,18 @@ def _char_convert(s):
 # strings in result rows.
 #
 PGSQL_TO_PYTHON_TYPES = {
-                            'bool': _bool_convert,
-                            'char': _char_convert,
-                            'float4': float,
-                            'float8': float,
-                            'int2': int,
-                            'int4': int,
-                            'int8': long,
-                            'oid' : long,
-                            'numeric': float,        #Should be some kind of decimal?
-                            'text': _char_convert,
-                            'unknown': _char_convert,
-                            'varchar': _char_convert,
+                            'bool': (_bool_convert, 'bool'),
+                            'char': (_char_convert, STRING),
+                            'float4': (float, NUMBER),
+                            'float8': (float, NUMBER),
+                            'int2': (int, NUMBER),
+                            'int4': (int, NUMBER),
+                            'int8': (long, NUMBER),
+                            'oid' : (long, NUMBER),
+                            'numeric': (float, NUMBER),        #Should be some kind of decimal?
+                            'text': (_char_convert, STRING),
+                            'unknown': (_char_convert, BINARY),
+                            'varchar': (_char_convert, STRING),
                             }
 
 #
@@ -293,6 +319,7 @@ class Connection:
         self.__lo_funcnames = {}
         self.__type_oid_name = {}         # map of Pgsql type-oids to Pgsql type-names
         self.__type_oid_conversion = {}   # map of Pgsql type-oids to Python conversion_functions
+        self.__type_oid_id = {}           # map of Pgsql type-oids to DB-API type identifiers
 
         #
         # Come up with a reasonable default host for
@@ -377,9 +404,12 @@ class Connection:
         # Make a dictionary of type oids to type names
         self.__type_oid_name = dict([(int(x[0]), x[1]) for x in cur])
 
+        # Make a dictionary of type oids to type identifiers
+        self.__type_oid_id = dict([(x[0], PGSQL_TO_PYTHON_TYPES.get(x[1], (None, 'unknown'))[1]) for x in self.__type_oid_name.items()])
+
         # Fill a dictionary of type oids to conversion functions
         for oid, typename in self.__type_oid_name.items():
-            self.__type_oid_conversion[oid] = PGSQL_TO_PYTHON_TYPES.get(typename, _identity)
+            self.__type_oid_conversion[oid] = PGSQL_TO_PYTHON_TYPES.get(typename, (_identity, None))[0]
 
 
     def __lo_init(self):
@@ -797,8 +827,7 @@ class Connection:
         # Convert Pgsql row descriptions to DB-API 2.0 row descriptions, somewhat... ###FIXME###
         descr = result.description
         if descr:
-            descr = [(x[0], self.__type_oid_name.get(x[1], '???'), None, None, None, None, None) for x in descr]
-
+            descr = [(x[0], self.__type_oid_id.get(x[1], '???'), None, None, None, None, None) for x in descr]
         return descr, result.rows, result.messages
 
 
