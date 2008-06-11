@@ -124,6 +124,15 @@ def _char_convert(s):
     return s.decode('utf-8')
 
 
+def _date_convert(s):
+    """
+    Convert date string to Python datetime.date object
+
+    """
+    y, m, d = s.split('-')
+    return datetime.date(int(y), int(m), int(d))
+
+
 def _identity(d):
     """
     Identity function, returns whatever was passed to it,
@@ -153,6 +162,7 @@ class _TypeManager(object):
     def __init__(self):
         self.pg_types = {}
         self.oid_map = {}
+        self.python_converters = {}
 
     def _clone(self):
         """
@@ -162,7 +172,22 @@ class _TypeManager(object):
         """
         result = _TypeManager()
         result.pg_types = self.pg_types.copy()
+        result.python_converters = self.python_converters.copy()
         return result
+
+
+    def python_to_sql(self, obj):
+        t = type(obj)
+        if t in self.python_converters:
+            return self.python_converters[t](obj)
+
+        if obj is  None:
+            return 'NULL'
+
+        if t in types.StringTypes:
+            return "'%s'" % obj.replace('\\', '\\\\').replace("'", "\\'")
+
+        return obj
 
 
     def get_conversion(self, oid):
@@ -205,6 +230,10 @@ class _TypeManager(object):
         self.oid_map[oid] = pg_type
 
 
+    def register_python(self, klass, converter):
+        self.python_converters[klass] = converter
+
+
 DEFAULT_TYPE_MANAGER = _TypeManager()
 
 DEFAULT_TYPE_MANAGER.register_pgsql(['char', 'varchar', 'text'], _char_convert, STRING)
@@ -215,6 +244,9 @@ DEFAULT_TYPE_MANAGER.register_pgsql(['float4', 'float8'], float, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('numeric', Decimal, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('oid', long, ROWID)
 DEFAULT_TYPE_MANAGER.register_pgsql('bool', _bool_convert, 'bool')
+DEFAULT_TYPE_MANAGER.register_pgsql('date', _date_convert, DATETIME)
+
+DEFAULT_TYPE_MANAGER.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
 
 
 #
@@ -280,17 +312,6 @@ def _parseDSN(s):
     if state == 4:              # was reading non-quoted val when string ran out
         result[keyword] = buf
     return result
-
-
-def _fix_arg(a):
-    #
-    # Make an argument SQL-ready: replace None with 'NULL', and escape strings
-    #
-    if a is  None:
-        return 'NULL'
-    if type(a) in types.StringTypes:
-        return "'%s'" % a.replace('\\', '\\\\').replace("'", "\\'")
-    return a
 
 
 class _LargeObject:
@@ -853,10 +874,10 @@ class Connection:
 
             if argtype == types.TupleType:
                 # Replace plain-format markers with fixed-up tuple parameters
-                cmd = cmd % tuple([_fix_arg(a) for a in args])
+                cmd = cmd % tuple([self.type_manager.python_to_sql(a) for a in args])
             else:
                 # replace pyformat markers with dictionary parameters
-                cmd = cmd % dict([(k, _fix_arg(v)) for k,v in args.items()])
+                cmd = cmd % dict([(k, self.type_manager.python_to_sql(v)) for k,v in args.items()])
 
         expanded_cmd = cmd
         if type(cmd) == types.UnicodeType:
