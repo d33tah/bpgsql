@@ -123,21 +123,15 @@ class TypeTests(ConnectedTests):
         self.assertEqual(row[0], False)
 
     def test_date(self):
-        self.cur.execute("SELECT '2008-06-11'::date")
-        self.assertEqual(self.cur.rowcount, 1)
-        row = self.cur.fetchone()
-        self.assertEqual(len(row), 1)
-        self.assertEqual(row[0], date(2008, 6, 11))
-
-    def test_date2(self):
         d1 = date.today()
         d2 = date(1986, 1, 21)
-        self.cur.execute("SELECT %s, %s", (d1, d2))
+        self.cur.execute("SELECT '2008-06-11'::date, %s, %s", (d1, d2))
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
-        self.assertEqual(len(row), 2)
-        self.assertEqual(row[0], d1)
-        self.assertEqual(row[1], d2)
+        self.assertEqual(len(row), 3)
+        self.assertEqual(row[0], date(2008, 6, 11))
+        self.assertEqual(row[1], d1)
+        self.assertEqual(row[2], d2)
 
     def test_float(self):
         self.cur.execute("SELECT sin(0) - 0.5")
@@ -173,7 +167,6 @@ class TypeTests(ConnectedTests):
     def test_numeric(self):
         d = Decimal('3.14159')
         self.cur.execute("SELECT 1.5, %s", (d,))
-        print self.cur.query
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
         self.assertEqual(len(row), 2)
