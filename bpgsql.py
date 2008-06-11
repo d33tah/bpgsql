@@ -492,7 +492,7 @@ class Connection:
             raise InterfaceError('Unrecognized packet type from server: %s' % pkt_type)
 
 
-    def __read_row(self, ascii=1):
+    def __read_row(self, ascii=True):
         #
         # Read an ASCII or Binary Row
         #
@@ -597,7 +597,7 @@ class Connection:
         #
         # Binary Row
         #
-        print self.__read_row(0)
+        self.__read_row(ascii=False)
 
 
     def _pkt_C(self):
