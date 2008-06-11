@@ -21,6 +21,7 @@ Barebones PostgreSQL
 import datetime
 import errno
 import exceptions
+import logging
 import select
 import socket
 import sys
@@ -157,8 +158,8 @@ SEEK_SET    = 0
 SEEK_CUR    = 1
 SEEK_END    = 2
 
-DEBUG = 0
 
+BPGSQL_LOGGER = logging.getLogger('bpgsql')
 
 
 def _parseDSN(s):
@@ -437,8 +438,7 @@ class Connection:
         #
         # Read the specified number of bytes from the backend
         #
-        if DEBUG:
-            print '__read_bytes(%d)' % nBytes
+        BPGSQL_LOGGER.debug('__read_bytes(%d)' % nBytes)
 
         while len(self.__input_buffer) < nBytes:
             d = self.__recv(4096)
@@ -479,13 +479,11 @@ class Connection:
         #  method looks up a method named _pkt_<c> and calls that
         #  to handle the response
         #
-        if DEBUG:
-            print '>[%s]' % self.__input_buffer
+        BPGSQL_LOGGER.debug('>[%s]' % self.__input_buffer)
 
         pkt_type = self.__read_bytes(1)
 
-        if DEBUG:
-            print 'pkt_type:', pkt_type
+        BPGSQL_LOGGER.debug('pkt_type: %s' % pkt_type)
 
         method = self.__class__.__dict__.get('_pkt_' + pkt_type, None)
         if method:
@@ -546,8 +544,7 @@ class Connection:
         #
         # Send data to the backend, make sure it's all sent
         #
-        if DEBUG:
-            print 'Send [%s]' % data
+        BPGSQL_LOGGER.debug('Send [%s]' % data)
 
         if self.__socket is None:
             raise InterfaceError, 'Connection not open'
@@ -677,8 +674,7 @@ class Connection:
         #
         # EmptyQuery Response
         #
-        if DEBUG:
-            print 'Empty Query', self.__read_string()
+        BPGSQL_LOGGER.debug('Empty Query: %s' % self.__read_string())
 
 
     def _pkt_K(self):
@@ -694,8 +690,7 @@ class Connection:
         # Notice Response
         #
         n = self.__read_string()
-        if DEBUG:
-            print 'Notice:', n
+        BPGSQL_LOGGER.debug('Notice: %s' % n)
         self.__current_result.messages.append((Warning, n))
 
 
@@ -874,9 +869,7 @@ class Connection:
         ints or strings.
 
         """
-        if DEBUG:
-            funcname = self.__lo_funcnames.get(oid, str(oid))
-            print 'funcall', funcname, args
+        BPGSQL_LOGGER.debug('funcall %s %s' % (self.__lo_funcnames.get(oid, str(oid)), str(args)))
 
         self.__ready = 0
         self.__send(_pack('!2sIi', 'F\0', oid, len(args)))
