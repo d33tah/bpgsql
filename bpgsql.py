@@ -974,6 +974,26 @@ class Connection:
             else:
                 raise PostgreSQL_Timeout()
 
+#
+# DB API 2.0 extension:
+#   All exception classes defined by the DB API standard should be
+#   exposed on the Connection objects as attributes (in addition
+#   to being available at module scope).
+#
+#   These attributes simplify error handling in multi-connection
+#   environments.
+
+Connection.Error = Error
+Connection.Warning = Warning
+Connection.InterfaceError = InterfaceError
+Connection.DatabaseError = DatabaseError
+Connection.InternalError = InternalError
+Connection.OperationalError = OperationalError
+Connection.ProgrammingError = ProgrammingError
+Connection.IntegrityError = IntegrityError
+Connection.DataError = DataError
+Connection.NotSupportedError = NotSupportedError
+
 
 class Cursor:
     """

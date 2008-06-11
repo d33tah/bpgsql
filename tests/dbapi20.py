@@ -11,14 +11,21 @@
     -- Ian Bicking
 '''
 
-__rcs_id__  = '$Id: dbapi20.py,v 1.8 2003/04/10 00:13:25 zenzen Exp $'
-__version__ = '$Revision: 1.8 $'[11:-2]
+__rcs_id__  = '$Id: dbapi20.py,v 1.10 2003/10/09 03:14:14 zenzen Exp $'
+__version__ = '$Revision: 1.10 $'[11:-2]
 __author__ = 'Stuart Bishop <zen@shangri-la.dropbear.id.au>'
 
 import unittest
 import time
 
 # $Log: dbapi20.py,v $
+# Revision 1.10  2003/10/09 03:14:14  zenzen
+# Add test for DB API 2.0 optional extension, where database exceptions
+# are exposed as attributes on the Connection object.
+#
+# Revision 1.9  2003/08/13 01:16:36  zenzen
+# Minor tweak from Stefan Fleiter
+#
 # Revision 1.8  2003/04/10 00:13:25  zenzen
 # Changes, as per suggestions by M.-A. Lemburg
 # - Add a table prefix, to ensure namespace collisions can always be avoided
@@ -106,7 +113,7 @@ class DatabaseAPI20Test(unittest.TestCase):
 
     def tearDown(self):
         ''' self.drivers should override this method to perform required cleanup
-            if any is necessary, such as deleting the dest database.
+            if any is necessary, such as deleting the test database.
             The default drops the tables that may be created.
         '''
         con = self._connect()
@@ -190,6 +197,26 @@ class DatabaseAPI20Test(unittest.TestCase):
         self.failUnless(
             issubclass(self.driver.NotSupportedError,self.driver.Error)
             )
+
+    def test_ExceptionsAsConnectionAttributes(self):
+        # OPTIONAL EXTENSION
+        # Test for the optional DB API 2.0 extension, where the exceptions
+        # are exposed as attributes on the Connection object
+        # I figure this optional extension will be implemented by any
+        # driver author who is using this test suite, so it is enabled
+        # by default.
+        con = self._connect()
+        drv = self.driver
+        self.failUnless(con.Warning is drv.Warning)
+        self.failUnless(con.Error is drv.Error)
+        self.failUnless(con.InterfaceError is drv.InterfaceError)
+        self.failUnless(con.DatabaseError is drv.DatabaseError)
+        self.failUnless(con.OperationalError is drv.OperationalError)
+        self.failUnless(con.IntegrityError is drv.IntegrityError)
+        self.failUnless(con.InternalError is drv.InternalError)
+        self.failUnless(con.ProgrammingError is drv.ProgrammingError)
+        self.failUnless(con.NotSupportedError is drv.NotSupportedError)
+
 
     def test_commit(self):
         con = self._connect()
@@ -780,7 +807,7 @@ class DatabaseAPI20Test(unittest.TestCase):
 
     def test_Time(self):
         t1 = self.driver.Time(13,45,30)
-        t2 = self.driver.TimeFromTicks(time.mktime((0,0,0,13,45,30,0,0,0)))
+        t2 = self.driver.TimeFromTicks(time.mktime((2001,1,1,13,45,30,0,0,0)))
         # Can we assume this? API doesn't specify, but it seems implied
         # self.assertEqual(str(t1),str(t2))
 
