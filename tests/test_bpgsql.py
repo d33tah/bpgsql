@@ -6,9 +6,10 @@ BPgSQL unittests
 
 """
 import unittest
+from optparse import OptionParser
 import bpgsql
 
-TEST_DSN = 'host=10.66.0.1 user=barryp dbname=test'
+DEFAULT_DSN = 'host=10.66.0.1 user=barryp dbname=test'
 
 class ConnectedTests(unittest.TestCase):
     """
@@ -16,8 +17,10 @@ class ConnectedTests(unittest.TestCase):
     to the backend with a test database.
 
     """
+    TEST_DSN = 'mydsn'
+
     def setUp(self):
-        self.cnx = bpgsql.connect(TEST_DSN)
+        self.cnx = bpgsql.connect(self.TEST_DSN)
         self.cur = self.cnx.cursor()
 
     def tearDown(self):
@@ -341,7 +344,7 @@ class LargeObjectTests(ConnectedTests):
             o.seek(-2, bpgsql.SEEK_END)
             s = o.read(4096)
             self.assertEqual(s, 'ld')
-    
+
             o.seek(5, bpgsql.SEEK_SET)
             o.seek(-2, bpgsql.SEEK_CUR)
             s = o.read(2)
@@ -356,6 +359,14 @@ class LargeObjectTests(ConnectedTests):
 
 
 def main():
+    parser = OptionParser(usage='usage: %prog [options]')
+    parser.add_option('--dsn', dest='dsn',
+                        help='DataSource Name to use for test (default: %default)',
+                        default=DEFAULT_DSN)
+
+    options, args = parser.parse_args()
+    ConnectedTests.TEST_DSN = options.dsn
+
     all_tests = []
     all_tests.append(unittest.makeSuite(DBAPIInterfaceTests, 'test_'))
     all_tests.append(unittest.makeSuite(InternalDSNParserTests, 'test_'))
