@@ -6,7 +6,7 @@ BPgSQL unittests
 
 """
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from optparse import OptionParser
 import bpgsql
@@ -132,6 +132,29 @@ class TypeTests(ConnectedTests):
         self.assertEqual(row[0], date(2008, 6, 11))
         self.assertEqual(row[1], d1)
         self.assertEqual(row[2], d2)
+
+    def test_time(self):
+        now = datetime.now()
+        t1 = time(now.hour, now.minute, now.second, now.microsecond)
+        t2 = time(1, 2, 3, 8765)
+        self.cur.execute("SELECT %s, %s, current_time", (t1, t2))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 3)
+        self.assertEqual(row[0], t1)
+        self.assertEqual(row[1], t2)
+        self.assertEqual(type(row[2]), time)
+        #
+        # PgSQL current_time should have a timezone attached, check
+        # if that survives a roundtrip
+        #
+        pgsql_now = row[2]
+        self.cur.execute("SELECT %s", (pgsql_now,))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0], pgsql_now)
+
 
     def test_datetime(self):
         d1 = datetime.now()

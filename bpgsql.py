@@ -149,6 +149,30 @@ class _SimpleTzInfo(datetime.tzinfo):
     def utcoffset(self, dt):
         return self.offset
 
+def _time_convert(timepart):
+    """
+    Convert time string to Python datetime.time object
+
+    """
+    if '+' in timepart:
+        timepart, tz = timepart.split('+')
+        tz = _SimpleTzInfo(tz)
+    elif '-' in timepart:
+        timepart, tz = timepart.split('-')
+        tz = _SimpleTzInfo('-' + tz)
+    else:
+        tz = None
+
+    h, mi, s = timepart.split(':')
+    if '.' in s:
+        s, frac = s.split('.')
+        frac = int(Decimal('0.' + frac) * 1000000)
+    else:
+        frac = 0
+
+    return datetime.time(int(h), int(mi), int(s), frac, tz)
+
+
 
 def _timestamp_convert(s):
     """
@@ -173,7 +197,6 @@ def _timestamp_convert(s):
     else:
         frac = 0
 
-
     return datetime.datetime(int(y), int(m), int(d), int(h), int(mi), int(s), frac, tz)
 
 
@@ -195,6 +218,15 @@ def _convert_datetime(dt):
     if dt.tzinfo:
         return "'%s'::timestamp with time zone" % dt.isoformat(' ')
     return "'%s'::timestamp" % dt.isoformat(' ')
+
+
+def _convert_time(t):
+    """
+    Convert Python datetime.time to pgsql
+    """
+    if t.tzinfo:
+        return "'%s'::time with time zone" % t.isoformat(' ')
+    return "'%s'::time" % t.isoformat(' ')
 
 
 class _PgType(object):
@@ -298,10 +330,12 @@ DEFAULT_TYPE_MANAGER.register_pgsql('numeric', Decimal, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('oid', long, ROWID)
 DEFAULT_TYPE_MANAGER.register_pgsql('bool', _bool_convert, 'bool')
 DEFAULT_TYPE_MANAGER.register_pgsql('date', _date_convert, DATETIME)
+DEFAULT_TYPE_MANAGER.register_pgsql(['time', 'timetz'], _time_convert, DATETIME)
 DEFAULT_TYPE_MANAGER.register_pgsql(['timestamp', 'timestamptz'], _timestamp_convert, DATETIME)
 
 DEFAULT_TYPE_MANAGER.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
 DEFAULT_TYPE_MANAGER.register_python(datetime.datetime, _convert_datetime)
+DEFAULT_TYPE_MANAGER.register_python(datetime.time, _convert_time)
 
 
 #
