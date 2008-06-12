@@ -114,6 +114,17 @@ class InternalDSNParserTests(unittest.TestCase):
 
 
 class TypeTests(ConnectedTests):
+
+    def test_binary(self):
+        b = bpgsql.Binary(''.join(chr(x) for x in range(256)))
+        self.cur.execute(r"SELECT %s, 'foo'::bytea", (b,))
+        self.assertEqual(self.cur.rowcount, 1)
+        row = self.cur.fetchone()
+        self.assertEqual(len(row), 2)
+        self.assertEqual(row[0], b)
+        self.assertEqual(row[1], 'foo')
+        self.assertTrue(isinstance(row[1], bpgsql.Binary))
+
     def test_boolean(self):
         self.cur.execute("SELECT True")
         row = self.cur.fetchone()
@@ -218,12 +229,16 @@ class TypeTests(ConnectedTests):
         self.assertEqual(row[1], d)
 
     def test_string(self):
-        self.cur.execute("SELECT 'foo'")
+        s = r"abc'def''ghi''''\'\r\n"
+        t = ''.join(chr(x) for x in range(1,128))
+        self.cur.execute(r"SELECT 'foo', '\bar', %s, %s", (s, t))
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
-        self.assertEqual(len(row), 1)
+        self.assertEqual(len(row), 4)
         self.assertEqual(row[0], 'foo')
-
+        self.assertEqual(row[1], r'\bar')
+        self.assertEqual(row[2], s)
+        self.assertEqual(row[3], t)
 
     def test_unicode(self):
         #

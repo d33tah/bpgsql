@@ -22,6 +22,7 @@ import datetime
 import errno
 import exceptions
 import logging
+import re
 import select
 import socket
 import sys
@@ -50,7 +51,7 @@ def TimeFromTicks(t):
     return datetime.time(dt.hour, dt.minute, dt.second)
 
 TimestampFromTicks = datetime.datetime.fromtimestamp
-Binary = lambda x: x
+class Binary(str): pass
 
 
 #
@@ -102,6 +103,13 @@ class NotSupportedError(DatabaseError):
 
 class PostgreSQL_Timeout(InterfaceError):
     pass
+
+
+_OCTAL_ESCAPE = re.compile(r'\\(\d\d\d)')
+
+def _binary_convert(s):
+    s = _OCTAL_ESCAPE.sub(lambda x: chr(int(x.group(1), 8)), s)
+    return Binary(s.replace('\\\\', '\\'))
 
 
 def _bool_convert(s):
@@ -174,7 +182,6 @@ def _time_convert(timepart):
     return datetime.time(int(h), int(mi), int(s), frac, tz)
 
 
-
 def _timestamp_convert(s):
     """
     Convert timestamp string to Python datetime.datetime object
@@ -195,6 +202,17 @@ def _identity(d):
     basically remains a string.
     """
     return d
+
+
+def _convert_binary(b):
+    result = []
+    for ch in b:
+        n = ord(ch)
+        if (0 <= n < 32) or (127 <= n <= 255) or (ch in ["'", '\\']):
+            result.append('\\\\%s' % oct(n).rjust(3, '0')[-3:])
+        else:
+            result.append(ch)
+    return "E'%s'::bytea" % ''.join(result)
 
 
 def _convert_datetime(dt):
@@ -256,7 +274,7 @@ class _TypeManager(object):
             return 'NULL'
 
         if t in types.StringTypes:
-            return "'%s'" % obj.replace('\\', '\\\\').replace("'", "\\'")
+            return "E'%s'" % obj.replace('\\', '\\\\').replace("'", "\\'").replace('\r', '\\r').replace('\n', '\\n')
 
         return obj
 
@@ -311,7 +329,7 @@ DEFAULT_TYPE_MANAGER = _TypeManager()
 ## Map PgSQL -> Python
 #
 DEFAULT_TYPE_MANAGER.register_pgsql(['char', 'varchar', 'text'], _char_convert, STRING)
-DEFAULT_TYPE_MANAGER.register_pgsql('bytea', _identity, BINARY)
+DEFAULT_TYPE_MANAGER.register_pgsql('bytea', _binary_convert, BINARY)
 
 DEFAULT_TYPE_MANAGER.register_pgsql(['int2', 'int4'], int, NUMBER)
 DEFAULT_TYPE_MANAGER.register_pgsql('int8', long, NUMBER)
@@ -331,7 +349,7 @@ DEFAULT_TYPE_MANAGER.register_pgsql(['timestamp', 'timestamptz'], _timestamp_con
 DEFAULT_TYPE_MANAGER.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
 DEFAULT_TYPE_MANAGER.register_python(datetime.datetime, _convert_datetime)
 DEFAULT_TYPE_MANAGER.register_python(datetime.time, _convert_time)
-
+DEFAULT_TYPE_MANAGER.register_python(Binary, _convert_binary)
 
 #
 # Constants relating to Large Object support
@@ -567,6 +585,7 @@ class Connection:
         """
         cur = self.cursor()
         cur.execute("SET CLIENT_ENCODING to 'UNICODE'")
+        cur.execute("SET STANDARD_CONFORMING_STRINGS to 'ON'")
 
         cur.execute('SELECT oid, typname FROM pg_type')
 

@@ -15,6 +15,9 @@ In development
         datetime.time       <--->   time or 'time with time zone'
         datetime.datetime   <--->   timestamp or 'timestamp with time zone'
 
+        bpgsql.Binary       <--->   bytea
+           (wrapper for str)
+
 Version 1.2
 
     Rework to be close to DB-API 2.0 compliant
