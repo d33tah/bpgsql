@@ -204,15 +204,9 @@ def _identity(d):
     return d
 
 
+_ESCAPE_CHARS = re.compile("[\x00-\x1f'\\\\\x7f-\xff]")
 def _convert_binary(b):
-    result = []
-    for ch in b:
-        n = ord(ch)
-        if (0 <= n < 32) or (127 <= n <= 255) or (ch in ["'", '\\']):
-            result.append('\\\\%s' % oct(n).rjust(3, '0')[-3:])
-        else:
-            result.append(ch)
-    return "E'%s'::bytea" % ''.join(result)
+    return "E'%s'::bytea" % _ESCAPE_CHARS.sub(lambda x: '\\\\%03o' % ord(x.group(0)), b)
 
 
 def _convert_datetime(dt):
@@ -274,7 +268,7 @@ class _TypeManager(object):
             return 'NULL'
 
         if t in types.StringTypes:
-            return "E'%s'" % obj.replace('\\', '\\\\').replace("'", "\\'").replace('\r', '\\r').replace('\n', '\\n')
+            return "E'%s'" % _ESCAPE_CHARS.sub(lambda x: '\\x%02x' % ord(x.group(0)), obj)
 
         return obj
 
