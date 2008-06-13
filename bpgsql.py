@@ -53,7 +53,6 @@ def TimeFromTicks(t):
 TimestampFromTicks = datetime.datetime.fromtimestamp
 class Binary(str): pass
 
-
 #
 # Type identifiers specified by DB-API 2.0
 #
@@ -96,7 +95,6 @@ class DataError(DatabaseError):
 class NotSupportedError(DatabaseError):
     pass
 
-
 #
 # Custom exceptions raised by this driver
 #
@@ -105,14 +103,30 @@ class PostgreSQL_Timeout(InterfaceError):
     pass
 
 
+#
+# Constants relating to Large Object support
+#
+INV_WRITE   = 0x00020000
+INV_READ    = 0x00040000
+
+SEEK_SET    = 0
+SEEK_CUR    = 1
+SEEK_END    = 2
+
+
+################################
+#
+# Type conversion functions
+
+
 _OCTAL_ESCAPE = re.compile(r'\\(\d\d\d)')
 
-def _binary_convert(s):
+def _binary_to_python(s):
     s = _OCTAL_ESCAPE.sub(lambda x: chr(int(x.group(1), 8)), s)
     return Binary(s.replace('\\\\', '\\'))
 
 
-def _bool_convert(s):
+def _bool_to_python(s):
     """
     Convert PgSQL boolean string to Python boolean
 
@@ -124,7 +138,7 @@ def _bool_convert(s):
     raise InterfaceError('Boolean type came across as unknown value [%s]' % s)
 
 
-def _char_convert(s):
+def _char_to_python(s):
     """
     Convert character data, which should be utf-8 strings, to Python Unicode strings
 
@@ -132,7 +146,7 @@ def _char_convert(s):
     return s.decode('utf-8')
 
 
-def _date_convert(s):
+def _date_to_python(s):
     """
     Convert date string to Python datetime.date object
 
@@ -142,6 +156,12 @@ def _date_convert(s):
 
 
 class _SimpleTzInfo(datetime.tzinfo):
+    """
+    Concrete subclass of datetime.tzinfo that can represent
+    the hour and minute offsets PgSQL supplies in the
+    '... with time zone' types.
+
+    """
     def __init__(self, tz):
         super(_SimpleTzInfo, self).__init__()
         if ':' in tz:
@@ -158,7 +178,7 @@ class _SimpleTzInfo(datetime.tzinfo):
         return self.offset
 
 
-def _time_convert(timepart):
+def _time_to_python(timepart):
     """
     Convert time string to Python datetime.time object
 
@@ -182,14 +202,14 @@ def _time_convert(timepart):
     return datetime.time(int(h), int(mi), int(s), frac, tz)
 
 
-def _timestamp_convert(s):
+def _timestamp_to_python(s):
     """
     Convert timestamp string to Python datetime.datetime object
 
     """
     datepart, timepart = s.split(' ')
-    d = _date_convert(datepart)
-    t = _time_convert(timepart)
+    d = _date_to_python(datepart)
+    t = _time_to_python(timepart)
     return datetime.datetime(d.year, d.month, d.day, t.hour, t.minute, t.second, t.microsecond, t.tzinfo)
 
 
@@ -205,11 +225,11 @@ def _identity(d):
 
 
 _ESCAPE_CHARS = re.compile("[\x00-\x1f'\\\\\x7f-\xff]")
-def _convert_binary(b):
+def _binary_to_pgsql(b):
     return "E'%s'::bytea" % _ESCAPE_CHARS.sub(lambda x: '\\\\%03o' % ord(x.group(0)), b)
 
 
-def _convert_datetime(dt):
+def _datetime_to_pgsql(dt):
     """
     Convert Python datetime.datetime to pgsql
     """
@@ -218,7 +238,7 @@ def _convert_datetime(dt):
     return "'%s'::timestamp" % dt.isoformat(' ')
 
 
-def _convert_time(t):
+def _time_to_pgsql(t):
     """
     Convert Python datetime.time to pgsql
     """
@@ -227,26 +247,10 @@ def _convert_time(t):
     return "'%s'::time" % t.isoformat(' ')
 
 
-class _PgType(object):
-    def __init__(self, name, converter, type_id):
-        self.name = name
-        self.converter = converter
-        self.type_id = type_id
-        self.oid = None
-
-_DEFAULT_PGTYPE = _PgType('unknown', _char_convert, 'unknown')
-
-
+################
 #
-# Constants relating to Large Object support
+# Helper classes and functions
 #
-INV_WRITE   = 0x00020000
-INV_READ    = 0x00040000
-
-SEEK_SET    = 0
-SEEK_CUR    = 1
-SEEK_END    = 2
-
 
 BPGSQL_LOGGER = logging.getLogger('bpgsql')
 
@@ -307,6 +311,7 @@ class _LargeObject(object):
     Make a PostgreSQL Large Object look somewhat like
     a Python file.  Should be created from Connection object
     open or create methods.
+
     """
     def __init__(self, client, fd):
         self.__client = client
@@ -346,10 +351,27 @@ class _LargeObject(object):
         return _unpack('!i', r)[0]
 
 
+class _PgType(object):
+    """
+    Helper class to hold info for mapping from pgsql types
+    to Python objecs.
+
+    """
+    def __init__(self, name, converter, type_id):
+        self.name = name
+        self.converter = converter
+        self.type_id = type_id
+        self.oid = None
+
+_DEFAULT_PGTYPE = _PgType('unknown', _char_to_python, 'unknown')
+
+
 class _ResultSet(object):
-    #
-    # Helper class only used internally by the Connection class
-    #
+    """
+    Helper class only used internally by the Connection class for
+    building up result sets.
+
+    """
     def __init__(self):
         self.conversion = None
         self.description = None
@@ -458,62 +480,14 @@ class Connection(object):
             self.__socket = None
 
 
-    def _python_to_sql(self, obj):
-        t = type(obj)
-        if t in self._python_converters:
-            return self._python_converters[t](obj)
-
-        if obj is  None:
-            return 'NULL'
-
-        if t in types.StringTypes:
-            return "E'%s'" % _ESCAPE_CHARS.sub(lambda x: '\\x%02x' % ord(x.group(0)), obj)
-
-        return obj
-
-
     def _get_conversion(self, oid):
+        """
+        Given an oid of a PgSQL type, come up with a Python callable
+        that will turn a string holding a representation of the value
+        into a Python object
+
+        """
         return self._oid_map.get(oid, _DEFAULT_PGTYPE).converter
-
-
-    def _get_type(self, oid):
-        return self._oid_map.get(oid, _DEFAULT_PGTYPE)
-
-
-    def register_pgsql(self, typenames, converter, type_id):
-        if type(typenames) in types.StringTypes:
-            typenames = [typenames]
-
-        for name in typenames:
-            #
-            # See if we've already done '_register_oid' on this name
-            #
-            if name in self._pg_types:
-                oid = self._pg_types[name].oid
-            else:
-                oid = None
-
-            self._pg_types[name] = pg_type = _PgType(name, converter, type_id)
-
-            #
-            # Update oid_map if we already did _register_oid on this name
-            #
-            if oid is not None:
-                self._oid_map[oid] = pg_type
-
-
-    def _register_oid(self, oid, name):
-        if name in self._pg_types:
-            pg_type = self._pg_types[name]
-        else:
-            self._pg_types[name] = pg_type = _PgType(name, _char_convert, 'oid:%d:%s' % (oid, name))
-
-        pg_type.oid = oid
-        self._oid_map[oid] = pg_type
-
-
-    def register_python(self, klass, converter):
-        self._python_converters[klass] = converter
 
 
     def __initialize_type_map(self):
@@ -551,6 +525,25 @@ class Connection(object):
             self.__result = []
         self.__current_result = _ResultSet()
         self.__result.append(self.__current_result)
+
+
+    def _python_to_sql(self, obj):
+        """
+        Convert a Python object to a string suitable for insertion
+        into an SQL statement.
+
+        """
+        t = type(obj)
+        if t in self._python_converters:
+            return self._python_converters[t](obj)
+
+        if obj is  None:
+            return 'NULL'
+
+        if t in types.StringTypes:
+            return "E'%s'" % _ESCAPE_CHARS.sub(lambda x: '\\x%02x' % ord(x.group(0)), obj)
+
+        return obj
 
 
     def __read_bytes(self, nBytes):
@@ -657,6 +650,22 @@ class Connection(object):
             except socket.error, serr:
                 if serr[0] != errno.EINTR:
                     raise
+
+
+    def _register_oid(self, oid, name):
+        """
+        Tie a numeric type oid to a name, which we may have already
+        registered a conversion function for.  If not, register a
+        default conversion function.
+
+        """
+        if name in self._pg_types:
+            pg_type = self._pg_types[name]
+        else:
+            self._pg_types[name] = pg_type = _PgType(name, _char_to_python, 'oid:%d:%s' % (oid, name))
+
+        pg_type.oid = oid
+        self._oid_map[oid] = pg_type
 
 
     def __send(self, data):
@@ -866,7 +875,7 @@ class Connection(object):
 
         description = []
         for name, oid, size, modifier in descr:
-            pg_type = self._get_type(oid)
+            pg_type = self._oid_map.get(oid, _DEFAULT_PGTYPE)
             description.append((name, pg_type.type_id, None, None, None, None, None))
 
         # Save the field description list
@@ -958,8 +967,8 @@ class Connection(object):
         #
         ## Map PgSQL -> Python
         #
-        self.register_pgsql(['char', 'varchar', 'text'], _char_convert, STRING)
-        self.register_pgsql('bytea', _binary_convert, BINARY)
+        self.register_pgsql(['char', 'varchar', 'text'], _char_to_python, STRING)
+        self.register_pgsql('bytea', _binary_to_python, BINARY)
 
         self.register_pgsql(['int2', 'int4'], int, NUMBER)
         self.register_pgsql('int8', long, NUMBER)
@@ -967,19 +976,19 @@ class Connection(object):
         self.register_pgsql('numeric', Decimal, NUMBER)
 
         self.register_pgsql('oid', long, ROWID)
-        self.register_pgsql('bool', _bool_convert, 'bool')
+        self.register_pgsql('bool', _bool_to_python, 'bool')
 
-        self.register_pgsql('date', _date_convert, DATETIME)
-        self.register_pgsql(['time', 'timetz'], _time_convert, DATETIME)
-        self.register_pgsql(['timestamp', 'timestamptz'], _timestamp_convert, DATETIME)
+        self.register_pgsql('date', _date_to_python, DATETIME)
+        self.register_pgsql(['time', 'timetz'], _time_to_python, DATETIME)
+        self.register_pgsql(['timestamp', 'timestamptz'], _timestamp_to_python, DATETIME)
 
         #
         ## Map Python -> PgSQL
         #
         self.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
-        self.register_python(datetime.datetime, _convert_datetime)
-        self.register_python(datetime.time, _convert_time)
-        self.register_python(Binary, _convert_binary)
+        self.register_python(datetime.datetime, _datetime_to_pgsql)
+        self.register_python(datetime.time, _time_to_pgsql)
+        self.register_python(Binary, _binary_to_pgsql)
 
 
     #--------------------------------------
@@ -1079,6 +1088,44 @@ class Connection(object):
         if not self.__lo_funcs:
             self.__lo_init()
         self.funcall(self.__lo_funcs['lo_unlink'], oid)
+
+
+    def register_pgsql(self, typenames, converter, type_id):
+        """
+        For a PgSQL typename or list of typenames, register a callable
+        that converts strings of those values into Python objects, and
+        a type_id object that will be used to identify the type in
+        result descriptions.
+
+        """
+        if type(typenames) in types.StringTypes:
+            typenames = [typenames]
+
+        for name in typenames:
+            #
+            # See if we've already done '_register_oid' on this name
+            #
+            if name in self._pg_types:
+                oid = self._pg_types[name].oid
+            else:
+                oid = None
+
+            self._pg_types[name] = pg_type = _PgType(name, converter, type_id)
+
+            #
+            # Update oid_map if we already did _register_oid on this name
+            #
+            if oid is not None:
+                self._oid_map[oid] = pg_type
+
+
+    def register_python(self, klass, converter):
+        """
+        Register a callable for converting a Python class
+        to a string suitable for use as a value in an SQL statement.
+
+        """
+        self._python_converters[klass] = converter
 
 
     def rollback(self):
