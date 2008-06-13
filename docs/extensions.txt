@@ -6,13 +6,13 @@ with which you can register conversion functions to translate PgSQL values
 to Python values or vice versa.
 
 Connections are preloaded with common conversion functions, but they can
-be added to with these methods
+be added to with these methods.
 
     register_pgsql(pg_type_name, callable, type_id)
         Where 'pg_type_name' is a string or list of strings indicating
         pgsql type names, callable is a Python callable that takes
         a string as an argument and returns some Python value, and type_id
-        is a value to be returned in a row descriptor - such as BINARY
+        is a value to be returned in result descriptors - such as BINARY
 
     register_python(python_class, callable)
         Where python_class is a python class, and callable is a
@@ -37,8 +37,20 @@ be added to with these methods
             m = re.match(r'\((.*?),\s*(.*?)\)', s)
             return Point(float(m.group(1)), float(m.group(2)))
 
-        myconn.type_manager.register_pgsql('point', python_point, 'my_point_id')
-        myconn.type_manager.register_python(Point, pg_point)
+        myconn = bpgsql.connect(...)
+        myconn.register_pgsql('point', python_point, 'my_point_id')
+        myconn.register_python(Point, pg_point)
+
+Or, a subclass of bpgsql.Connection may override the _initialize_types()
+method.  For example:
+
+        class MyConnection(bpgsql.Connection):
+            def _initialize_types(self):
+                super(MyConnection, self)._initialize_types()
+                self.register_python(Point, pg_point)
+
+        myconn = MyConnection(...)
+
 
 
 Cursor objects have a '.query' attribute, which is a string containing
