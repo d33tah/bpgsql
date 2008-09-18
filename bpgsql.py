@@ -174,6 +174,9 @@ class _SimpleTzInfo(datetime.tzinfo):
             minute = -minute
         self.offset = datetime.timedelta(hours=hour, minutes=minute)
 
+    def dst(self, dt):
+        return None
+
     def utcoffset(self, dt):
         return self.offset
 
@@ -922,18 +925,18 @@ class Connection(object):
     def _execute(self, cmd, args=None):
         if args is not None:
             argtype = type(args)
-            if argtype not in [types.TupleType, types.DictType]:
+            if argtype not in [types.ListType, types.TupleType, types.DictType]:
                 args = (args,)
                 argtype = types.TupleType
 
             # At this point we know args is either a tuple or a dict
 
-            if argtype == types.TupleType:
-                # Replace plain-format markers with fixed-up tuple parameters
-                cmd = cmd % tuple([self._python_to_sql(a) for a in args])
-            else:
+            if argtype == types.DictType:
                 # replace pyformat markers with dictionary parameters
                 cmd = cmd % dict([(k, self._python_to_sql(v)) for k,v in args.items()])
+            else:
+                # Replace plain-format markers with fixed-up tuple parameters
+                cmd = cmd % tuple([self._python_to_sql(a) for a in args])
 
         expanded_cmd = cmd
         if type(cmd) == types.UnicodeType:
