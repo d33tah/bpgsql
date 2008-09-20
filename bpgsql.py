@@ -270,14 +270,14 @@ def _time_to_python(timepart):
     else:
         tz = None
 
-    h, mi, s = timepart.split(':')
-    if '.' in s:
-        s, frac = s.split('.')
+    hour, minute, second = timepart.split(':')
+    if '.' in second:
+        second, frac = second.split('.')
         frac = int(Decimal('0.' + frac) * 1000000)
     else:
         frac = 0
 
-    return datetime.time(int(h), int(mi), int(s), frac, tz)
+    return datetime.time(int(hour), int(minute), int(second), frac, tz)
 
 
 def _timestamp_to_python(s):
@@ -749,7 +749,7 @@ class Connection(object):
         # Send data to the backend, make sure it's all sent
         #
         if self.__socket is None:
-            raise InterfaceError, 'Connection not open'
+            raise InterfaceError('Connection not open')
 
         while data:
             try:
@@ -1021,7 +1021,7 @@ class Connection(object):
         result = result[0]
 
         if result.error:
-            raise DatabaseError, result.error
+            raise DatabaseError(result.error)
 
         return result.description, result.rows, result.messages, cmd
 
@@ -1078,7 +1078,7 @@ class Connection(object):
 
         """
         if self.__socket is None:
-            raise InterfaceError, "Can't close connection that's not open"
+            raise InterfaceError("Can't close connection that's not open")
         self.__del__()
 
 
@@ -1357,7 +1357,7 @@ class Cursor(object):
 
         """
         if self.__rows is None:
-            raise Error, 'No result set available'
+            raise Error('No result set available')
 
         return self.fetchmany(self.rowcount - self.rownumber)
 
@@ -1384,7 +1384,7 @@ class Cursor(object):
 
         """
         if self.__rows is None:
-            raise Error, 'No result set available'
+            raise Error('No result set available')
 
         if size is None:
             size = self.arraysize
@@ -1402,7 +1402,7 @@ class Cursor(object):
 
         """
         if self.__rows is None:
-            raise Error, 'No result set available'
+            raise Error('No result set available')
 
         n = self.rownumber
         if n >= self.rowcount:
@@ -1426,17 +1426,17 @@ class Cursor(object):
 
         """
         if self.__rows is None:
-            raise Error, 'No result set available'
+            raise Error('No result set available')
 
         if mode == 'relative':
             newpos = self.rownumber + n
         elif mode == 'absolute':
             newpos = n
         else:
-            raise ProgrammingError, 'Unknown scroll mode [%s]' % mode
+            raise ProgrammingError('Unknown scroll mode [%s]' % mode)
 
         if (newpos < 0) or (newpos >= self.rowcount):
-            raise IndexError, 'scroll(%d, "%s") target position: %d outsize of range: 0..%d' % (n, mode, newpos, self.rowcount-1)
+            raise IndexError('scroll(%d, "%s") target position: %d outsize of range: 0..%d' % (n, mode, newpos, self.rowcount-1))
 
         self.rownumber = newpos
 
