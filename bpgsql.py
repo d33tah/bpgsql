@@ -50,7 +50,14 @@ def TimeFromTicks(t):
     return datetime.time(dt.hour, dt.minute, dt.second)
 
 TimestampFromTicks = datetime.datetime.fromtimestamp
-class Binary(str): pass
+
+class Binary(str):
+    """
+    Wrapper class for plain string to indicate it
+    should be passed as a binary value to PostgreSQL.
+
+    """
+    pass
 
 #
 # Type identifiers specified by DB-API 2.0
@@ -65,33 +72,94 @@ ROWID = object()
 # Exception hierarchy from DB-API 2.0 spec
 #
 class Error(exceptions.StandardError):
+    """
+    Exception that is the base class of all other error
+    exceptions. You can use this to catch all errors with one
+    single 'except' statement. Warnings are not considered
+    errors and thus should not use this class as base.
+
+    """
     pass
 
 class Warning(exceptions.StandardError):
+    """
+    Exception raised for important warnings like data
+    truncations while inserting, etc.
+
+    """
     pass
 
 class InterfaceError(Error):
+    """
+    Exception raised for errors that are related to the
+    database interface rather than the database itself.
+
+    """
     pass
 
 class DatabaseError(Error):
+    """
+    Exception raised for errors that are related to the
+    database.
+
+    """
     pass
 
 class InternalError(DatabaseError):
+    """
+    Exception raised when the database encounters an internal
+    error, e.g. the cursor is not valid anymore, the
+    transaction is out of sync, etc.
+
+    """
     pass
 
 class OperationalError(DatabaseError):
+    """
+    Exception raised for errors that are related to the
+    database's operation and not necessarily under the control
+    of the programmer, e.g. an unexpected disconnect occurs,
+    the data source name is not found, a transaction could not
+    be processed, a memory allocation error occurred during
+    processing, etc.
+
+    """
     pass
 
 class ProgrammingError(DatabaseError):
+    """
+    Exception raised for programming errors, e.g. table not
+    found or already exists, syntax error in the SQL
+    statement, wrong number of parameters specified, etc.
+
+    """
     pass
 
 class IntegrityError(DatabaseError):
+    """
+    Exception raised when the relational integrity of the
+    database is affected, e.g. a foreign key check fails.
+
+    """
     pass
 
 class DataError(DatabaseError):
+    """
+    Exception raised for errors that are due to problems with
+    the processed data like division by zero, numeric value
+    out of range, etc.
+
+    """
     pass
 
 class NotSupportedError(DatabaseError):
+    """
+    Exception raised in case a method or database API was used
+    which is not supported by the database, e.g. requesting a
+    .rollback() on a connection that does not support
+    transaction or has transactions turned off.
+
+    """
     pass
 
 #
@@ -99,6 +167,10 @@ class NotSupportedError(DatabaseError):
 #
 
 class PostgreSQL_Timeout(InterfaceError):
+    """
+    Exception raised by wait_notify() when timeout has expired.
+
+    """
     pass
 
 
@@ -121,6 +193,10 @@ SEEK_END    = 2
 _OCTAL_ESCAPE = re.compile(r'\\(\d\d\d)')
 
 def _binary_to_python(s):
+    """
+    Convert a PgSQL binary value to a plain Python string.
+
+    """
     s = _OCTAL_ESCAPE.sub(lambda x: chr(int(x.group(1), 8)), s)
     return Binary(s.replace('\\\\', '\\'))
 
@@ -212,17 +288,24 @@ def _timestamp_to_python(s):
     datepart, timepart = s.split(' ')
     d = _date_to_python(datepart)
     t = _time_to_python(timepart)
-    return datetime.datetime(d.year, d.month, d.day, t.hour, t.minute, t.second, t.microsecond, t.tzinfo)
+    return datetime.datetime(d.year, d.month, d.day,
+        t.hour, t.minute, t.second,
+        t.microsecond, t.tzinfo)
 
 
 _ESCAPE_CHARS = re.compile("[\x00-\x1f'\\\\\x7f-\xff]")
 def _binary_to_pgsql(b):
+    """
+    Convert a python string (probably subclassed as 'Binary') to
+    a PgSQL bytea.
+
+    """
     return "E'%s'::bytea" % _ESCAPE_CHARS.sub(lambda x: '\\\\%03o' % ord(x.group(0)), b)
 
 
 def _datetime_to_pgsql(dt):
     """
-    Convert Python datetime.datetime to pgsql
+    Convert Python datetime.datetime to PgSQL timestamp.
     """
     if dt.tzinfo:
         return "'%s'::timestamp with time zone" % dt.isoformat(' ')
@@ -231,7 +314,8 @@ def _datetime_to_pgsql(dt):
 
 def _time_to_pgsql(t):
     """
-    Convert Python datetime.time to pgsql
+    Convert Python datetime.time to PgSQL time.
+
     """
     if t.tzinfo:
         return "'%s'::time with time zone" % t.isoformat(' ')
@@ -321,8 +405,8 @@ class _LargeObject(object):
     def flush(self):
         pass
 
-    def read(self, len):
-        return self.__client._lo_funcall('loread', self.__fd, len)
+    def read(self, readlen):
+        return self.__client._lo_funcall('loread', self.__fd, readlen)
 
     def seek(self, offset, whence):
         self.__client._lo_funcall('lo_lseek', self.__fd, offset, whence)
@@ -361,6 +445,7 @@ class _ResultSet(object):
 
     """
     def __init__(self):
+        self.completed = None
         self.conversion = None
         self.description = None
         self.error = None
@@ -381,7 +466,8 @@ class Connection(object):
     connection objects are created by calling this module's connect function.
 
     """
-    def __init__(self, dsn=None, username='', password='', host=None, dbname='', port='', opt=''):
+    def __init__(self, dsn=None, username='', password='',
+        host=None, dbname='', port='', opt=''):
         self.__backend_pid = None
         self.__backend_key = None
         self.__socket = None
@@ -449,7 +535,8 @@ class Connection(object):
         # Send startup packet specifying protocol version 2.0
         #  (works with PostgreSQL 6.3 or higher?)
         #
-        self.__send(_pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'], args['user'], args['options'], '', ''))
+        self.__send(_pack('!ihh64s32s64s64s64s', 296, 2, 0, args['dbname'],
+                            args['user'], args['options'], '', ''))
         while not self.__ready:
             self.__read_response()
 
@@ -496,10 +583,11 @@ class Connection(object):
 
     def __lo_init(self):
         #
-        # Make up a dictionary mapping function names beginning with "lo" to function oids
-        # (there may be some non-lobject functions in there, but that should be harmless)
+        # Make up a dictionary mapping function names beginning with "lo"
+        # to function oids (there may be some non-lobject functions
+        # in there, but that should be harmless)
         #
-        descr, rows, msgs, cmd = self._execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")
+        _, rows, _, _ = self._execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")
         for proname, oid in rows:
             self.__lo_funcs[proname] = oid
             self.__lo_funcnames[oid] = proname
@@ -560,12 +648,11 @@ class Connection(object):
         # Read a something-terminated string from the backend
         # (the terminator isn't returned as part of the result)
         #
-        result = None
-        while 1:
-            try:
+        while True:
+            if terminator in self.__input_buffer:
                 result, self.__input_buffer = self.__input_buffer.split(terminator, 1)
                 return result
-            except:
+            else:
                 # need more data
                 d = self.__recv(4096)
                 if d:
@@ -633,7 +720,7 @@ class Connection(object):
 
 
     def __recv(self, bufsize):
-        while 1:
+        while True:
             try:
                 return self.__socket.recv(bufsize)
             except socket.error, serr:
@@ -685,9 +772,9 @@ class Connection(object):
             return 1
 
         if timeout >= 0:
-            r, w, e = select.select([self.__socket], [], [], timeout)
+            r, _, _ = select.select([self.__socket], [], [], timeout)
         else:
-            r, w, e = select.select([self.__socket], [], [])
+            r, _, _ = select.select([self.__socket], [], [])
 
         if r:
             return 1
@@ -754,7 +841,7 @@ class Connection(object):
             stdin = sys.stdin
 
         lastline = None
-        while 1:
+        while True:
             s = stdin.readline()
             if (not s) or (s == '\\.\n'):
                 break
@@ -776,7 +863,7 @@ class Connection(object):
         else:
             stdout = sys.stdout
 
-        while 1:
+        while True:
             s = self.__read_string('\n')
             if s == '\\.':
                 break
@@ -797,7 +884,6 @@ class Connection(object):
         # Backend Key data
         #
         self.__backend_pid, self.__backend_key = _unpack('!ii', self.__read_bytes(8))
-        #print 'Backend Key Data, pid: %d, key: %d' % (self.__backend_pid, self.__backend_key)
 
 
     def _pkt_N(self):
@@ -876,7 +962,7 @@ class Connection(object):
         # Function call response
         #
         self.__func_result = None
-        while 1:
+        while True:
             ch = self.__read_bytes(1)
             if ch == '0':
                 break
@@ -916,10 +1002,11 @@ class Connection(object):
                 break
             elif isinstance(args, dict):
                 # replace pyformat markers with dictionary parameters
-                cmd = cmd % dict([(k, self._python_to_sql(v)) for k,v in args.items()])
+                cmd = cmd % dict([(k, self._python_to_sql(v)) for k, v in args.items()])
                 break
             else:
-                # Args wasn't a tuple, list, or dict: wrap it up in a tuple and retry
+                # Args wasn't a tuple, list, or dict: wrap it up
+                # in a tuple and retry
                 args = (args,)
 
         self.__ready = 0
@@ -948,7 +1035,8 @@ class Connection(object):
         #
         ## Map PgSQL -> Python
         #
-        self.register_pgsql(['char', 'varchar', 'text'], _char_to_python, STRING)
+        self.register_pgsql(['char', 'varchar', 'text'],
+            _char_to_python, STRING)
         self.register_pgsql('bytea', _binary_to_python, BINARY)
 
         self.register_pgsql(['int2', 'int4'], int, NUMBER)
@@ -961,7 +1049,8 @@ class Connection(object):
 
         self.register_pgsql('date', _date_to_python, DATETIME)
         self.register_pgsql(['time', 'timetz'], _time_to_python, DATETIME)
-        self.register_pgsql(['timestamp', 'timestamptz'], _timestamp_to_python, DATETIME)
+        self.register_pgsql(['timestamp', 'timestamptz'],
+            _timestamp_to_python, DATETIME)
 
         #
         ## Map Python -> PgSQL
@@ -1021,7 +1110,8 @@ class Connection(object):
         for arg in args:
             atype = type(arg)
             if (atype == types.LongType) and (arg >= 0):
-                # Make sure positive longs, such as OIDs, get sent back as unsigned ints
+                # Make sure positive longs, such as OIDs, get
+                # sent back as unsigned ints
                 self.__send(_pack('!iI', 4, arg))
             elif (atype == types.IntType) or (atype == types.LongType):
                 self.__send(_pack('!ii', 4, arg))
@@ -1149,7 +1239,7 @@ class Connection(object):
         Raises a PostgreSQL_Timeout exception on timeout
 
         """
-        while 1:
+        while True:
             if self.__notify_queue:
                 result, self.__notify_queue = self.__notify_queue[0], self.__notify_queue[1:]
                 return result
@@ -1248,7 +1338,7 @@ class Cursor(object):
             self.rownumber = 0
 
 
-    def executemany(self, str,  seq_of_parameters):
+    def executemany(self, cmd,  seq_of_parameters):
         """
         Execute a database operation (query or command) against
         all parameter sequences or mappings found in the
@@ -1256,7 +1346,7 @@ class Cursor(object):
 
         """
         for p in seq_of_parameters:
-            self.execute(str, p)
+            self.execute(cmd, p)
 
 
     def fetchall(self):
@@ -1353,7 +1443,7 @@ class Cursor(object):
 
     def setinputsizes(self, sizes):
         """
-        Intented to be used before a call to executeXXX() to
+        Intented to be used before a call to execute() or executemany() to
         predefine memory areas for the operation's parameters.
 
         Doesn't actually do anything in this client.
@@ -1373,7 +1463,8 @@ class Cursor(object):
         pass
 
 
-def connect(dsn=None, username='', password='', host=None, dbname='', port='', opt='', **extra):
+def connect(dsn=None, username='', password='',
+            host=None, dbname='', port='', opt='', **extra):
     """
     Connect to a PostgreSQL database.
 
