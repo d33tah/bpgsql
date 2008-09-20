@@ -21,7 +21,6 @@ Barebones pure-python PostGreSQL
 import datetime
 import errno
 import exceptions
-import logging
 import re
 import select
 import socket
@@ -254,9 +253,6 @@ def _time_to_pgsql(t):
 #
 # Helper classes and functions
 #
-
-BPGSQL_LOGGER = logging.getLogger('bpgsql')
-
 
 def _parseDSN(s):
     """
@@ -553,8 +549,6 @@ class Connection(object):
         #
         # Read the specified number of bytes from the backend
         #
-        BPGSQL_LOGGER.debug('__read_bytes(%d)' % nBytes)
-
         while len(self.__input_buffer) < nBytes:
             d = self.__recv(4096)
             if d:
@@ -594,11 +588,7 @@ class Connection(object):
         #  method looks up a method named _pkt_<c> and calls that
         #  to handle the response
         #
-        BPGSQL_LOGGER.debug('>[%s]' % self.__input_buffer)
-
         pkt_type = self.__read_bytes(1)
-
-        BPGSQL_LOGGER.debug('pkt_type: %s' % pkt_type)
 
         method = self.__class__.__dict__.get('_pkt_' + pkt_type, None)
         if method:
@@ -675,8 +665,6 @@ class Connection(object):
         #
         # Send data to the backend, make sure it's all sent
         #
-        BPGSQL_LOGGER.debug('Send [%s]' % data)
-
         if self.__socket is None:
             raise InterfaceError, 'Connection not open'
 
@@ -805,7 +793,7 @@ class Connection(object):
         #
         # EmptyQuery Response
         #
-        BPGSQL_LOGGER.debug('Empty Query: %s' % self.__read_string())
+        pass
 
 
     def _pkt_K(self):
@@ -821,7 +809,6 @@ class Connection(object):
         # Notice Response
         #
         n = self.__read_string()
-        BPGSQL_LOGGER.debug('Notice: %s' % n)
         self.__current_result.messages.append((Warning, n))
 
 
@@ -942,8 +929,6 @@ class Connection(object):
         if type(cmd) == types.UnicodeType:
             cmd = cmd.encode('utf-8')
 
-        BPGSQL_LOGGER.debug('EXECUTE:' + expanded_cmd)
-
         self.__ready = 0
         self.__result = None
         self.__new_result()
@@ -1036,8 +1021,6 @@ class Connection(object):
         ints or strings.
 
         """
-        BPGSQL_LOGGER.debug('funcall %s %s' % (self.__lo_funcnames.get(oid, str(oid)), str(args)))
-
         self.__ready = 0
         self.__send(_pack('!2sIi', 'F\0', oid, len(args)))
         for arg in args:
