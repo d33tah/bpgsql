@@ -215,17 +215,6 @@ def _timestamp_to_python(s):
     return datetime.datetime(d.year, d.month, d.day, t.hour, t.minute, t.second, t.microsecond, t.tzinfo)
 
 
-def _identity(d):
-    """
-    Identity function, returns whatever was passed to it,
-    used when we have a PostgreSQL type for which we don't
-    have a function to convert from a PostgreSQL string
-    representation to a Python object - so the item
-    basically remains a string.
-    """
-    return d
-
-
 _ESCAPE_CHARS = re.compile("[\x00-\x1f'\\\\\x7f-\xff]")
 def _binary_to_pgsql(b):
     return "E'%s'::bytea" % _ESCAPE_CHARS.sub(lambda x: '\\\\%03o' % ord(x.group(0)), b)
@@ -407,7 +396,7 @@ class Connection(object):
         self.__lo_funcnames = {}
         self._pg_types = {}
         self._oid_map = {}
-        self._python_converters = {}
+        self._python_converters = []
 
         #
         # Come up with a reasonable default host for
@@ -528,18 +517,25 @@ class Connection(object):
 
     def _python_to_sql(self, obj):
         """
-        Convert a Python object to a string suitable for insertion
+        Convert a Python object to a utf-8 string suitable for insertion
         into an SQL statement.
 
         """
-        t = type(obj)
-        if t in self._python_converters:
-            return self._python_converters[t](obj)
+        escape_string = True
 
-        if obj is  None:
+        for klass, converter in self._python_converters:
+            if isinstance(obj, klass):
+                obj = converter(obj)
+                escape_string = False
+                break
+
+        if obj is None:
             return 'NULL'
 
-        if t in types.StringTypes:
+        if isinstance(obj, unicode):
+            obj = obj.encode('utf-8')
+
+        if escape_string and isinstance(obj, str):
             return "E'%s'" % _ESCAPE_CHARS.sub(lambda x: '\\x%02x' % ord(x.group(0)), obj)
 
         return obj
@@ -910,24 +906,21 @@ class Connection(object):
     # Helper function for Cursor objects
     #
     def _execute(self, cmd, args=None):
-        if args is not None:
-            argtype = type(args)
-            if argtype not in [types.ListType, types.TupleType, types.DictType]:
-                args = (args,)
-                argtype = types.TupleType
+        if isinstance(cmd, unicode):
+            cmd = cmd.encode('utf-8')
 
-            # At this point we know args is either a tuple or a dict
-
-            if argtype == types.DictType:
-                # replace pyformat markers with dictionary parameters
-                cmd = cmd % dict([(k, self._python_to_sql(v)) for k,v in args.items()])
-            else:
+        while args is not None:
+            if isinstance(args, (tuple, list)):
                 # Replace plain-format markers with fixed-up tuple parameters
                 cmd = cmd % tuple([self._python_to_sql(a) for a in args])
-
-        expanded_cmd = cmd
-        if type(cmd) == types.UnicodeType:
-            cmd = cmd.encode('utf-8')
+                break
+            elif isinstance(args, dict):
+                # replace pyformat markers with dictionary parameters
+                cmd = cmd % dict([(k, self._python_to_sql(v)) for k,v in args.items()])
+                break
+            else:
+                # Args wasn't a tuple, list, or dict: wrap it up in a tuple and retry
+                args = (args,)
 
         self.__ready = 0
         self.__result = None
@@ -943,7 +936,7 @@ class Connection(object):
         if result.error:
             raise DatabaseError, result.error
 
-        return result.description, result.rows, result.messages, expanded_cmd
+        return result.description, result.rows, result.messages, cmd
 
 
     def _initialize_types(self):
@@ -972,9 +965,11 @@ class Connection(object):
 
         #
         ## Map Python -> PgSQL
+        #  the order matters, so put subclasses before superclasses
+        #   (such as datetime before date)
         #
-        self.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
         self.register_python(datetime.datetime, _datetime_to_pgsql)
+        self.register_python(datetime.date, lambda x: "'%s'::date" % str(x))
         self.register_python(datetime.time, _time_to_pgsql)
         self.register_python(Binary, _binary_to_pgsql)
 
@@ -1084,7 +1079,9 @@ class Connection(object):
         result descriptions.
 
         """
-        if type(typenames) in types.StringTypes:
+        # if the first arg is just a single string, put it into a list
+        #
+        if isinstance(typenames, basestring):
             typenames = [typenames]
 
         for name in typenames:
@@ -1107,11 +1104,17 @@ class Connection(object):
 
     def register_python(self, klass, converter):
         """
-        Register a callable for converting a Python class
-        to a string suitable for use as a value in an SQL statement.
+        Register a callable for converting a Python object
+        to a string suitable for use as a value in an SQL statement.  The
+        result should ideally be a utf-8 encoded plain string, or else a
+        unicode string.
+
+        Converters are searched in the order they're added, so be sure
+        to register more specific types before general times (for example,
+        datetime.datetime before datetime.date).
 
         """
-        self._python_converters[klass] = converter
+        self._python_converters.append((klass, converter))
 
 
     def rollback(self):
