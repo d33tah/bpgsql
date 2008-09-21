@@ -587,8 +587,8 @@ class Connection(object):
         # to function oids (there may be some non-lobject functions
         # in there, but that should be harmless)
         #
-        _, rows, _, _ = self._execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")
-        for proname, oid in rows:
+        result = self._execute("SELECT proname, oid FROM pg_proc WHERE proname like 'lo%'")
+        for proname, oid in result.rows:
             self.__lo_funcs[proname] = oid
             self.__lo_funcnames[oid] = proname
 
@@ -821,11 +821,14 @@ class Connection(object):
         #
         # Error Response
         #
+        error_msg = self.__read_string()
+        exc = DatabaseError(error_msg)
+
         if self.__current_result:
-            self.__current_result.error = self.__read_string()
+            self.__current_result.error = exc
             self.__new_result()
         else:
-            raise DatabaseError(self.__read_string())
+            raise exc
 
 
     def _pkt_G(self):
@@ -1019,11 +1022,8 @@ class Connection(object):
 
         # Convert old-style results to what the new Cursor class expects
         result = result[0]
-
-        if result.error:
-            raise DatabaseError(result.error)
-
-        return result.description, result.rows, result.messages, cmd
+        result.query = cmd
+        return result
 
 
     def _initialize_types(self):
@@ -1328,10 +1328,30 @@ class Cursor(object):
         self.rowcount = -1
         self.rownumber = None
         self.description = None
+        self.lastrowid = None
         self.__rows = None
         self.messages = []
 
-        self.description, self.__rows, self.messages, self.query = self.connection._execute(cmd, args)
+        result = self.connection._execute(cmd, args)
+
+        if result.error:
+            raise result.error
+
+        self.description = result.description
+        self.__rows = result.rows
+        self.messages = result.messages
+        self.query = result.query
+
+        try:
+            words = result.completed.split(' ')
+            self.rowcount = int(words[-1])
+            if words[0] == 'INSERT':
+                try:
+                    self.lastrowid = int(words[-2])
+                except:
+                    pass
+        except:
+            pass
 
         if self.__rows is not None:
             self.rowcount = len(self.__rows)
@@ -1347,6 +1367,9 @@ class Cursor(object):
         """
         for p in seq_of_parameters:
             self.execute(cmd, p)
+
+        # Don't want to leave the value of the last execute() call
+        self.rowcount = -1
 
 
     def fetchall(self):
