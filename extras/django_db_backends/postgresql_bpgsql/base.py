@@ -91,7 +91,7 @@ class ConnectionWrapper(bpgsql.Connection):
         # the error message, then guess that it's an IntegrityError
         #
         if isinstance(result.error, DatabaseError) and ('violates' in result.error.message):
-            result.error = IntegrityError(result.error.msg)
+            result.error = IntegrityError(result.error.message)
 
         debuglog(repr(result.query)+'\n')
         return result
