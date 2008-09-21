@@ -44,6 +44,30 @@ def _wrapped_time_to_python(timepart):
 def _wrapped_timestamp_to_python(s):
     return bpgsql._timestamp_to_python(s).replace(tzinfo=None)
 
+class CursorWrapper(bpgsql.Cursor):
+    """
+    Override bpgsql.Cursor to change a few behaviors to satisfy Django.
+
+    """
+    def fetchmany(self, size=None):
+        """
+        Make the result of fetchmany() a list of tuples
+        instead of a list of lists.
+
+        """
+        return [tuple(x) for x in bpgsql.Cursor.fetchmany(self, size)]
+
+    def fetchone(self):
+        """
+        Make the result of fetchone() a tuple instead of a list
+
+        """
+        result = bpgsql.Cursor.fetchone(self)
+        if result is not None:
+            result = tuple(result)
+        return result
+
+
 class ConnectionWrapper(bpgsql.Connection):
     def __init__(self, *args, **kwargs):
         self.django_needs_begin = True
@@ -83,6 +107,9 @@ class ConnectionWrapper(bpgsql.Connection):
         bpgsql.Connection.commit(self)
         self.django_needs_begin = True
         debuglog('>>COMMIT\n')
+
+    def cursor(self):
+        return CursorWrapper(self)
 
     def rollback(self):
         bpgsql.Connection.rollback(self)
