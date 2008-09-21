@@ -674,9 +674,9 @@ class Connection(object):
         pkt_type = self.__read_bytes(1)
 
         method = self.__class__.__dict__.get('_pkt_' + pkt_type, None)
-        if method:
-            method(self)
-        else:
+        try:
+            getattr(self, '_pkt_' + pkt_type)()
+        except AttributeError:
             raise InterfaceError('Unrecognized packet type from server: %s' % pkt_type)
 
 
