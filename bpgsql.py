@@ -679,7 +679,6 @@ class Connection(object):
         #
         pkt_type = self.__read_bytes(1)
 
-        method = self.__class__.__dict__.get('_pkt_' + pkt_type, None)
         try:
             getattr(self, '_pkt_' + pkt_type)()
         except AttributeError:
