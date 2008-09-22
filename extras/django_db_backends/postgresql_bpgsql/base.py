@@ -28,7 +28,7 @@ IntegrityError = bpgsql.IntegrityError
 
 class DatabaseFeatures(BaseDatabaseFeatures):
     needs_datetime_string_cast = False
-    uses_savepoints = False
+    uses_savepoints = True
 
 class DatabaseOperations(PostgresqlDatabaseOperations):
     def last_executed_query(self, cursor, sql, params):
@@ -36,7 +36,7 @@ class DatabaseOperations(PostgresqlDatabaseOperations):
         # exact query sent to the database.
         return cursor.query
 
-CHANGE_OPS = ['select', 'insert', 'update', 'delete']
+WRAPPED_OPS = ['savepoint', 'select', 'insert', 'update', 'delete']
 TRANSACTION_OPS = ['begin', 'commit', 'rollback']
 
 def _wrapped_time_to_python(timepart):
@@ -83,10 +83,11 @@ class ConnectionWrapper(bpgsql.Connection):
 
     def _execute(self, cmd, args=None):
         operation = cmd.split(' ', 1)[0].lower()
-        if self.django_needs_begin and operation in CHANGE_OPS:
+        if self.django_needs_begin and operation in WRAPPED_OPS:
             bpgsql.Connection._execute(self, 'BEGIN')
+            debuglog('>>FORCED BEGIN\n')
             self.django_needs_begin = False
-        if (not self.django_needs_begin) and (operation not in CHANGE_OPS) and (operation not in TRANSACTION_OPS):
+        if (not self.django_needs_begin) and (operation not in WRAPPED_OPS) and (operation not in TRANSACTION_OPS):
             bpgsql.Connection._execute(self, 'COMMIT')
             debuglog('>>FORCED COMMIT\n')
             self.django_needs_begin = True
@@ -100,7 +101,10 @@ class ConnectionWrapper(bpgsql.Connection):
         if isinstance(result.error, DatabaseError) and ('violates' in result.error.message):
             result.error = IntegrityError(result.error.message)
 
-        debuglog(repr(result.query)+'\n')
+        debuglog(repr(result.query) + '\n')
+        if result.error:
+            debuglog(str(result.error) + '\n')
+        debuglog('-----\n')
         return result
 
     def _initialize_types(self):
@@ -113,7 +117,6 @@ class ConnectionWrapper(bpgsql.Connection):
     def commit(self):
         bpgsql.Connection.commit(self)
         self.django_needs_begin = True
-        debuglog('>>COMMIT\n')
 
     def cursor(self):
         return CursorWrapper(self)
@@ -121,7 +124,6 @@ class ConnectionWrapper(bpgsql.Connection):
     def rollback(self):
         bpgsql.Connection.rollback(self)
         self.django_needs_begin = True
-        debuglog('>>ROLLBACK\n')
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     operators = {
