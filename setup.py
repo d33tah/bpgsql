@@ -12,8 +12,8 @@ import sys
 from distutils.core import setup
 
 setup(name = "bpgsql",
-      description = "Barebones pure-Python PostGreSQL client",
-      version = "1.3",
+      description = "Barebones pure-python PostGreSQL client",
+      version = "2.0 alpha 1",
       license = "LGPL",
       author = "Barry Pederson",
       author_email = "bp@barryp.org",

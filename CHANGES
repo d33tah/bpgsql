@@ -1,7 +1,7 @@
 CHANGES
 --------
 
-In development
+2.0 alpha 1
 
     Unicode support
 
@@ -17,6 +17,8 @@ In development
 
         bpgsql.Binary       <--->   bytea
            (wrapper for str)
+
+    Experimental Django 1.0 DB backend
 
 Version 1.2
 

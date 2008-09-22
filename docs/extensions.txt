@@ -1,12 +1,9 @@
 Extensions to DB-API 2.0
 ------------------------
 
-Connection objects have a 'type_manager' attribute which is a class
-with which you can register conversion functions to translate PgSQL values
-to Python values or vice versa.
-
-Connections are preloaded with common conversion functions, but they can
-be added to with these methods.
+Connections are preloaded with common conversion functions for translating
+PgSQL values to Python and vice versa.  They can be added to with these
+methods:
 
     register_pgsql(pg_type_name, callable, type_id)
         Where 'pg_type_name' is a string or list of strings indicating
@@ -19,6 +16,10 @@ be added to with these methods.
         Python callable that takes values of the specified class
         and returns a string ready for insertion into an SQL statement,
         doing any quoting or escaping if required.
+
+        Converters added with register_python() are searched in the order
+        they're registered, so be sure to register subclasses before
+        their more general superclasses.
 
     Example:
         class Point(object):

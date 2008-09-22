@@ -1,0 +1,14 @@
+Django 1.0 Backend
+------------------
+
+This backend is a work in progress..
+
+Copy or symlink the postgresql_bpgsql directory into your
+django/db/backends directory, alongside the existing postgresql_psycopg2
+directory
+
+In your Django settings file, use
+
+  DATABASE_ENGINE = 'postgresql_bpgsql'
+
+The rest of the settings should be the same as you'd use with psycopg2

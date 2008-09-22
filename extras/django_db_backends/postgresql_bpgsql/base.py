@@ -12,9 +12,10 @@ from django.db.backends.postgresql.creation import DatabaseCreation
 from django.db.backends.postgresql.version import get_version
 from django.db.backends.postgresql.introspection import DatabaseIntrospection
 
-
+# Quick-and-dirty tracing of SQL activity
 def debuglog(msg):
-    open('/tmp/bpgsql.log', 'a').write(msg)
+#    open('/tmp/bpgsql.log', 'a').write(msg)
+    return
 
 try:
     import bpgsql
@@ -46,7 +47,8 @@ def _wrapped_timestamp_to_python(s):
 
 class CursorWrapper(bpgsql.Cursor):
     """
-    Override bpgsql.Cursor to change a few behaviors to satisfy Django.
+    Override bpgsql.Cursor to change a few behaviors to
+    satisfy Django unittests.
 
     """
     def fetchmany(self, size=None):
@@ -69,9 +71,14 @@ class CursorWrapper(bpgsql.Cursor):
 
 
 class ConnectionWrapper(bpgsql.Connection):
+    """
+    Wrapper around bpgsql.Connection to simulate the non-autocommit
+    behavior that Django seems to expect from psycopg, and to cause
+    bpgsql to return timezone-naive datetime and time objects.
+
+    """
     def __init__(self, *args, **kwargs):
         self.django_needs_begin = True
-#        super(bpgsql.Connection, self).__init__(*args, **kwargs)
         bpgsql.Connection.__init__(self, *args, **kwargs)
 
     def _execute(self, cmd, args=None):

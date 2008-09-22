@@ -1,0 +1,26 @@
+Differences from DB-API 2.0
+---------------------------
+
+This library tries to follow PEP 249 pretty closely, but currently this
+module DOES NOT follow this part of the spec...
+
+    "... Note that if the database supports an auto-commit feature, this
+    must be initially off. An interface method may be provided to
+    turn it back on."
+
+Nothing is done automagically with transactions, if you want to start
+a transaction, you'll have to do it yourself with something like:
+
+    mycursor.execute('BEGIN')
+
+To end a transaction, you may use the connection methods such as:
+
+    myconn.commit()
+    myconn.rollback()
+
+or just execute the statements yourself
+
+    mycursor.execute('COMMIT')
+    mycursor.execute('ROLLBACK')
+
+
