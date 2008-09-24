@@ -98,8 +98,8 @@ class ConnectionWrapper(bpgsql.Connection):
         # identified as IntegrityErrors, If the word 'violates' is in
         # the error message, then guess that it's an IntegrityError
         #
-        if isinstance(result.error, DatabaseError) and ('violates' in result.error.message):
-            result.error = IntegrityError(result.error.message)
+        if isinstance(result.error, DatabaseError) and ('violates' in result.error.args[0]):
+            result.error = IntegrityError(*result.error.args)
 
         debuglog(repr(result.query) + '\n')
         if result.error:

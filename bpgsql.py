@@ -26,7 +26,10 @@ import select
 import socket
 import sys
 import types
-from decimal import Decimal
+try:
+    from decimal import Decimal
+except:
+    Decimal = float
 from struct import pack as _pack
 from struct import unpack as _unpack
 

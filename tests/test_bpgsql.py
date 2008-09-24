@@ -7,7 +7,10 @@ BPgSQL unittests
 """
 import unittest
 from datetime import date, datetime, time
-from decimal import Decimal
+try:
+    from decimal import Decimal
+except:
+    Decimal = float
 from optparse import OptionParser
 import bpgsql
 
@@ -116,14 +119,14 @@ class InternalDSNParserTests(unittest.TestCase):
 class TypeTests(ConnectedTests):
 
     def test_binary(self):
-        b = bpgsql.Binary(''.join(chr(x) for x in range(256)))
+        b = bpgsql.Binary(''.join([chr(x) for x in range(256)]))
         self.cur.execute(r"SELECT %s, 'foo'::bytea", (b,))
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
         self.assertEqual(len(row), 2)
         self.assertEqual(row[0], b)
         self.assertEqual(row[1], 'foo')
-        self.assertTrue(isinstance(row[1], bpgsql.Binary))
+        self.assertEqual(isinstance(row[1], bpgsql.Binary), True)
 
     def test_boolean(self):
         self.cur.execute("SELECT True")
@@ -230,7 +233,7 @@ class TypeTests(ConnectedTests):
 
     def test_string(self):
         s = r"abc'def''ghi''''\'\r\n"
-        t = ''.join(chr(x) for x in range(1,128))
+        t = ''.join([chr(x) for x in range(1,128)])
         self.cur.execute(r"SELECT 'foo', '\bar', %s, %s", (s, t))
         self.assertEqual(self.cur.rowcount, 1)
         row = self.cur.fetchone()
