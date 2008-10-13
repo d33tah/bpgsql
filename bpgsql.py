@@ -327,8 +327,8 @@ def _time_to_pgsql(t):
 
     """
     if t.tzinfo:
-        return "'%s'::time with time zone" % t.isoformat(' ')
-    return "'%s'::time" % t.isoformat(' ')
+        return "'%s'::time with time zone" % t.isoformat()
+    return "'%s'::time" % t.isoformat()
 
 
 ################
