@@ -36,8 +36,8 @@ from struct import unpack as _unpack
 #
 # See Python sys.version and sys.version_info
 #
-version = '2.0 alpha 1'
-version_info = (2, 0, 0, 'alpha', 1)
+version = '2.0 alpha 2'
+version_info = (2, 0, 0, 'alpha', 2)
 
 #
 # Module Globals specified by DB-API 2.0
