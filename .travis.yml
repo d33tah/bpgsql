@@ -4,4 +4,4 @@ python:
 install:
   - true
 script:
-  - true
+  - python setup.py install
