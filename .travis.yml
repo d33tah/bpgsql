@@ -3,3 +3,5 @@ python:
   - "2.6"
 install:
   - true
+script:
+  - true
