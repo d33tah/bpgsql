@@ -523,6 +523,7 @@ class Connection(object):
             s.connect(args['host'])
         else:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            print(args)
             s.connect((args['host'], int(args['port'])))
 
         if not args['user']:
