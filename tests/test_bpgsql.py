@@ -12,7 +12,7 @@ try:
 except:
     Decimal = float
 from optparse import OptionParser
-from ... import bpgsql
+from .. import bpgsql
 
 DEFAULT_DSN = 'host=10.66.0.1 user=barryp dbname=test'
 
