@@ -12,7 +12,13 @@ try:
 except:
     Decimal = float
 from optparse import OptionParser
-from .. import bpgsql
+
+# Import bpgsql from the parent directory so that codecov.io will see it
+# and generate coverage stats.
+import sys
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, parent_dir)
+import bpgsql
 
 DEFAULT_DSN = 'host=10.66.0.1 user=barryp dbname=test'
 
