@@ -15,7 +15,7 @@ python:
 install:
   - true
 script:
-  - python setup.py install && coverage run tests/test_bpgsql.py --dsn 'host=localhost port=5432 user=postgres'
+  - $PYTHON_EXE setup.py install && $PYTHON_EXE -m coverage run tests/test_bpgsql.py --dsn 'host=localhost port=5432 user=postgres'
 
 addons:
   postgresql: "9.3"
@@ -27,3 +27,18 @@ before_install:
   - pip install codecov
 after_success:
   - codecov
+
+env:
+  - JYTHON=true
+  - JYTHON=false
+
+matrix:
+  exclude:
+    - python: 2.6
+      env: JYTHON=true
+
+before_install:
+  - export JYTHON_URL='http://downloads.sourceforge.net/project/jython/jython/2.5.2/jython_installer-2.5.2.jar'
+  - if [ "$JYTHON" == "true" ]; then wget $JYTHON_URL -O jython_installer.jar; java -jar jython_installer.jar -s -d $HOME/jython; export PATH=$HOME/jython:$PATH; fi
+
+before_script: if [ "$JYTHON" == "true" ]; then export PYTHON_EXE=jython; jython -c "print ''"; else export PYTHON_EXE=python; fi
