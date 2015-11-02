@@ -15,7 +15,7 @@ python:
 install:
   - true
 script:
-  - python setup.py install && cp bpgsql.py tests && coverage run tests/test_bpgsql.py --dsn 'host=localhost port=5432 user=postgres'
+  - python setup.py install && cp bpgsql.py tests && coverage run -m tests/test_bpgsql --dsn 'host=localhost port=5432 user=postgres'
 
 addons:
   postgresql: "9.3"
