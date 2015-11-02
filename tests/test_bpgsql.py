@@ -16,6 +16,7 @@ from optparse import OptionParser
 # Import bpgsql from the parent directory so that codecov.io will see it
 # and generate coverage stats.
 import sys
+import os
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 import bpgsql
