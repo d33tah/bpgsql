@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/d33tah/py-bpgsql.svg?branch=travis)](https://travis-ci.org/d33tah/py-bpgsql)
+[![Build Status](https://travis-ci.org/d33tah/py-bpgsql.svg)](https://travis-ci.org/d33tah/py-bpgsql)
 
 Barebones pure-python PostGreSQL Client Library
 
