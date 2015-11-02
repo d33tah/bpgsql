@@ -20,7 +20,6 @@ Barebones pure-python PostGreSQL
 
 import datetime
 import errno
-import exceptions
 import re
 import select
 import socket
@@ -32,6 +31,11 @@ except:
     Decimal = float
 from struct import pack as _pack
 from struct import unpack as _unpack
+
+if sys.version_info > (3,):
+    long = int
+else:
+    from exceptions import *
 
 #
 # See Python sys.version and sys.version_info
@@ -80,17 +84,17 @@ ROWID = object()
 #
 # Exception hierarchy from DB-API 2.0 spec
 #
-class Error(exceptions.StandardError):
+class Error(Exception):
     """
     Exception that is the base class of all other error
-    exceptions. You can use this to catch all errors with one
+     You can use this to catch all errors with one
     single 'except' statement. Warnings are not considered
     errors and thus should not use this class as base.
 
     """
     pass
 
-class Warning(exceptions.StandardError):
+class Warning(Exception):
     """
     Exception raised for important warnings like data
     truncations while inserting, etc.
@@ -505,17 +509,17 @@ class Connection(object):
 
         args = _parseDSN(dsn)
 
-        if not args.has_key('host'):
+        if 'host' not in args:
             args['host'] = host
-        if not args.has_key('port'):
+        if 'port' not in args:
             args['port'] = port or 5432
-        if not args.has_key('dbname'):
+        if 'dbname' not in args:
             args['dbname'] = dbname
-        if not args.has_key('user'):
+        if 'user' not in args:
             args['user'] = username
-        if not args.has_key('password'):
+        if 'password' not in args:
             args['password'] = password
-        if not args.has_key('options'):
+        if 'options' not in args:
             args['options'] = opt
 
         if args['host'].startswith('/'):
@@ -629,7 +633,7 @@ class Connection(object):
         if obj is None:
             return 'NULL'
 
-        if isinstance(obj, unicode):
+        if isinstance(obj, str):
             obj = obj.encode('utf-8')
 
         if escape_string and isinstance(obj, str):
@@ -696,8 +700,8 @@ class Connection(object):
 
         # check if we need to use longs (more than 32 fields)
         if result.null_byte_count > 4:
-            null_bits = 0L
-            field_mask = 128L
+            null_bits = int(0)
+            field_mask = int(128)
         else:
             null_bits = 0
             field_mask = 128
@@ -731,7 +735,7 @@ class Connection(object):
         while True:
             try:
                 return self.__socket.recv(bufsize)
-            except socket.error, serr:
+            except socket.error as serr:
                 if serr[0] != errno.EINTR:
                     raise
 
@@ -762,7 +766,7 @@ class Connection(object):
         while data:
             try:
                 nSent = self.__socket.send(data)
-            except socket.error, serr:
+            except socket.error as serr:
                 if serr[0] != errno.EINTR:
                     raise
                 continue
@@ -996,14 +1000,14 @@ class Connection(object):
     # Helper func for _LargeObject
     #
     def _lo_funcall(self, name, *args):
-        return apply(self.funcall, (self.__lo_funcs[name],) + args)
+        return self.funcall(*(self.__lo_funcs[name],) + args)
 
 
     #--------------------------------------
     # Helper function for Cursor objects
     #
     def _execute(self, cmd, args=None):
-        if isinstance(cmd, unicode):
+        if isinstance(cmd, str):
             cmd = cmd.encode('utf-8')
 
         while args is not None:
@@ -1013,7 +1017,7 @@ class Connection(object):
                 break
             elif isinstance(args, dict):
                 # replace pyformat markers with dictionary parameters
-                cmd = cmd % dict([(k, self._python_to_sql(v)) for k, v in args.items()])
+                cmd = cmd % dict([(k, self._python_to_sql(v)) for k, v in list(args.items())])
                 break
             else:
                 # Args wasn't a tuple, list, or dict: wrap it up
@@ -1048,11 +1052,11 @@ class Connection(object):
         self.register_pgsql('bytea', _binary_to_python, BINARY)
 
         self.register_pgsql(['int2', 'int4'], int, NUMBER)
-        self.register_pgsql('int8', long, NUMBER)
+        self.register_pgsql('int8', int, NUMBER)
         self.register_pgsql(['float4', 'float8'], float, NUMBER)
         self.register_pgsql('numeric', Decimal, NUMBER)
 
-        self.register_pgsql('oid', long, ROWID)
+        self.register_pgsql('oid', int, ROWID)
         self.register_pgsql('bool', _bool_to_python, 'bool')
 
         self.register_pgsql('date', _date_to_python, DATETIME)
@@ -1117,11 +1121,11 @@ class Connection(object):
         self.__send(_pack('!2sIi', 'F\0', oid, len(args)))
         for arg in args:
             atype = type(arg)
-            if (atype == types.LongType) and (arg >= 0):
+            if (atype == int) and (arg >= 0):
                 # Make sure positive longs, such as OIDs, get
                 # sent back as unsigned ints
                 self.__send(_pack('!iI', 4, arg))
-            elif (atype == types.IntType) or (atype == types.LongType):
+            elif (atype == int) or (atype == int):
                 self.__send(_pack('!ii', 4, arg))
             else:
                 self.__send(_pack('!i', len(arg)))
@@ -1179,7 +1183,7 @@ class Connection(object):
         """
         # if the first arg is just a single string, put it into a list
         #
-        if isinstance(typenames, basestring):
+        if isinstance(typenames, str):
             typenames = [typenames]
 
         for name in typenames:
@@ -1401,7 +1405,7 @@ class Cursor(object):
 
         """
         try:
-            return self.next()
+            return next(self)
         except StopIteration:
             return None
 
@@ -1425,7 +1429,7 @@ class Cursor(object):
         return self.__rows[n:self.rownumber]
 
 
-    def next(self):
+    def __next__(self):
         """
         Return the next row of a result set.  Raises StopIteration
         if no more rows are available.  Raises an Error if no result set
