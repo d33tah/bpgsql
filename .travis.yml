@@ -12,7 +12,7 @@ python:
   - "pypy3"
 
 install:
-  - true
+  - pip install -U coverage
 script:
   - python setup.py install && coverage run tests/test_bpgsql.py --dsn 'host=localhost port=5432 user=postgres'
 
