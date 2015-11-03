@@ -18,5 +18,6 @@ setup(name = "bpgsql",
       author = "Barry Pederson",
       author_email = "bp@barryp.org",
       url = "http://barryp.org/software/bpgsql/",
-      py_modules = ['bpgsql']
+      py_modules = ['bpgsql'],
+      packages = ['django_bpgsql'],
      )
