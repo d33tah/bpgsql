@@ -20,19 +20,13 @@ from django.utils.safestring import SafeText, SafeBytes
 from django.utils.timezone import utc
 
 try:
-    import psycopg2 as Database
-    import psycopg2.extensions
+    import bpgsql as Database
 except ImportError as e:
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured("Error loading psycopg2 module: %s" % e)
 
 DatabaseError = Database.DatabaseError
 IntegrityError = Database.IntegrityError
-
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
-psycopg2.extensions.register_adapter(SafeBytes, psycopg2.extensions.QuotedString)
-psycopg2.extensions.register_adapter(SafeText, psycopg2.extensions.QuotedString)
 
 
 def utc_tzinfo_factory(offset):
@@ -114,8 +108,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         conn_params.update(settings_dict['OPTIONS'])
         if 'autocommit' in conn_params:
             del conn_params['autocommit']
-        if 'isolation_level' in conn_params:
-            del conn_params['isolation_level']
         if settings_dict['USER']:
             conn_params['user'] = settings_dict['USER']
         if settings_dict['PASSWORD']:
@@ -137,23 +129,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         #   and if autocommit is off, on psycopg2 < 2.4.2, _set_autocommit()
         #   needs self.isolation_level.
         options = self.settings_dict['OPTIONS']
-        try:
-            self.isolation_level = options['isolation_level']
-        except KeyError:
-            self.isolation_level = connection.isolation_level
-        else:
-            # Set the isolation level to the value from OPTIONS. This isn't
-            # needed on psycopg2 < 2.4.2 because it happens as a side-effect
-            # of _set_autocommit(False).
-            if (self.isolation_level != connection.isolation_level and
-                    self.psycopg2_version >= (2, 4, 2)):
-                connection.set_session(isolation_level=self.isolation_level)
 
         return connection
 
     def init_connection_state(self):
         settings_dict = self.settings_dict
-        self.connection.set_client_encoding('UTF8')
         tz = 'UTC' if settings.USE_TZ else settings_dict.get('TIME_ZONE')
         if tz:
             try:
@@ -179,23 +159,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         cursor.tzinfo_factory = utc_tzinfo_factory if settings.USE_TZ else None
         return cursor
 
-    def _set_isolation_level(self, isolation_level):
-        assert isolation_level in range(1, 5)     # Use set_autocommit for level = 0
-        if self.psycopg2_version >= (2, 4, 2):
-            self.connection.set_session(isolation_level=isolation_level)
-        else:
-            self.connection.set_isolation_level(isolation_level)
 
     def _set_autocommit(self, autocommit):
         with self.wrap_database_errors:
-            if self.psycopg2_version >= (2, 4, 2):
-                self.connection.autocommit = autocommit
-            else:
-                if autocommit:
-                    level = psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
-                else:
-                    level = self.isolation_level
-                self.connection.set_isolation_level(level)
+            self.connection.autocommit = autocommit
 
     def check_constraints(self, table_names=None):
         """
@@ -220,8 +187,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     @cached_property
     def psycopg2_version(self):
-        version = psycopg2.__version__.split(' ', 1)[0]
-        return tuple(int(v) for v in version.split('.'))
+        return (2, 4, 2)
 
     @cached_property
     def pg_version(self):
