@@ -633,10 +633,10 @@ class Connection(object):
         if obj is None:
             return 'NULL'
 
-        if isinstance(obj, str):
+        if isinstance(obj, basestring):
             obj = obj.encode('utf-8')
 
-        if escape_string and isinstance(obj, str):
+        if escape_string and isinstance(obj, basestring):
             return "E'%s'" % _ESCAPE_CHARS.sub(lambda x: '\\x%02x' % ord(x.group(0)), obj)
 
         return obj
