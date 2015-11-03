@@ -1445,6 +1445,7 @@ class Cursor(object):
 
         self.rownumber += 1
         return self.__rows[n]
+    next = __next__
 
 
     def scroll(self, n, mode='relative'):
