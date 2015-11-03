@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/d33tah/py-bpgsql.svg)](https://travis-ci.org/d33tah/py-bpgsql)
+[![codecov.io](https://codecov.io/github/d33tah/py-bpgsql/coverage.svg?branch=master)](https://codecov.io/github/d33tah/py-bpgsql?branch=master)
 
 Barebones pure-python PostGreSQL Client Library
 
