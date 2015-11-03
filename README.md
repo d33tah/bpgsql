@@ -1,5 +1,5 @@
 [![Build Status][TCI-img]][TCI]
-[![codecov.io](https://codecov.io/github/d33tah/py-bpgsql/coverage.svg?branch=master)](https://codecov.io/github/d33tah/py-bpgsql?branch=master)
+[![codecov.io][CC-img]][CC]
 
 Barebones pure-python PostGreSQL Client Library
 
@@ -10,3 +10,5 @@ Mostly DB-API 2.0 compliant
 
 [TCI-img]: https://travis-ci.org/d33tah/py-bpgsql.svg
 [TCI]: https://travis-ci.org/d33tah/py-bpgsql
+[CC-img]: https://codecov.io/github/d33tah/py-bpgsql/coverage.svg?branch=master
+[CC]: https://codecov.io/github/d33tah/py-bpgsql?branch=master
