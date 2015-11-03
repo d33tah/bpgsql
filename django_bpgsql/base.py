@@ -7,12 +7,12 @@ Requires psycopg 2: http://initd.org/projects/psycopg2
 from django.conf import settings
 from django.db.backends import (BaseDatabaseFeatures, BaseDatabaseWrapper,
     BaseDatabaseValidation)
-from django.db.backends.postgresql_psycopg2.operations import DatabaseOperations
-from django.db.backends.postgresql_psycopg2.client import DatabaseClient
-from django.db.backends.postgresql_psycopg2.creation import DatabaseCreation
-from django.db.backends.postgresql_psycopg2.version import get_version
-from django.db.backends.postgresql_psycopg2.introspection import DatabaseIntrospection
-from django.db.backends.postgresql_psycopg2.schema import DatabaseSchemaEditor
+from django_bpgsql.operations import DatabaseOperations
+from django_bpgsql.client import DatabaseClient
+from django_bpgsql.creation import DatabaseCreation
+from django_bpgsql.version import get_version
+from django_bpgsql.introspection import DatabaseIntrospection
+from django_bpgsql.schema import DatabaseSchemaEditor
 from django.db.utils import InterfaceError
 from django.utils.encoding import force_str
 from django.utils.functional import cached_property
