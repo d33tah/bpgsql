@@ -5,6 +5,9 @@ This project is not being maintained, do not use it.
 ====================================================
 
 I don't have enough time to test `_python_to_sql` function for SQL injections.
+For more information and discussion, see the following URL:
+
+https://github.com/d33tah/bpgsql/issues/7
 
 bpgsql
 ======
